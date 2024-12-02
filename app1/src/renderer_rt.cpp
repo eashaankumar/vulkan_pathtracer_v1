@@ -720,6 +720,69 @@ RendererRT::RendererRT()
 
     #pragma endregion
 
+    #pragma region Shader Miss Module
+    std::ifstream rayMissFile("compiled_shaders/shader.rmiss.spv",
+                            std::ios::binary | std::ios::ate);
+    if (rayMissFile.fail()) LOG("Failed miss shader");
+    std::streamsize rayMissFileSize = rayMissFile.tellg();
+    rayMissFile.seekg(0, std::ios::beg);
+    std::vector<uint32_t> rayMissShaderSource(rayMissFileSize / sizeof(uint32_t));
+
+    rayMissFile.read(reinterpret_cast<char *>(rayMissShaderSource.data()),
+                    rayMissFileSize);
+
+    rayMissFile.close();
+
+    VkShaderModuleCreateInfo rayMissShaderModuleCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .codeSize = (uint32_t)rayMissShaderSource.size() * sizeof(uint32_t),
+        .pCode = rayMissShaderSource.data()};
+
+    VkShaderModule rayMissShaderModuleHandle = VK_NULL_HANDLE;
+    result = vkCreateShaderModule(deviceHandle, &rayMissShaderModuleCreateInfo,
+                                    NULL, &rayMissShaderModuleHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateShaderModule");
+    }
+
+    #pragma endregion
+
+    #pragma region Shader Miss Shadow Module
+    std::ifstream rayMissShadowFile("compiled_shaders/shader_shadow.rmiss.spv",
+                                  std::ios::binary | std::ios::ate);
+    if (rayMissShadowFile.fail()) LOG("Failed shadow shader");
+    std::streamsize rayMissShadowFileSize = rayMissShadowFile.tellg();
+    rayMissShadowFile.seekg(0, std::ios::beg);
+    std::vector<uint32_t> rayMissShadowShaderSource(rayMissShadowFileSize /
+                                                    sizeof(uint32_t));
+
+    rayMissShadowFile.read(
+        reinterpret_cast<char *>(rayMissShadowShaderSource.data()),
+        rayMissShadowFileSize);
+
+    rayMissShadowFile.close();
+
+    VkShaderModuleCreateInfo rayMissShadowShaderModuleCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .codeSize = (uint32_t)rayMissShadowShaderSource.size() * sizeof(uint32_t),
+        .pCode = rayMissShadowShaderSource.data()};
+
+    VkShaderModule rayMissShadowShaderModuleHandle = VK_NULL_HANDLE;
+    result =
+        vkCreateShaderModule(deviceHandle, &rayMissShadowShaderModuleCreateInfo,
+                            NULL, &rayMissShadowShaderModuleHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateShaderModule");
+    }
+
+    #pragma endregion
+
     #pragma endregion
 }
 #endif
