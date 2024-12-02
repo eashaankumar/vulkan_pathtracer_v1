@@ -57,10 +57,12 @@ void throwExceptionVulkanAPI(VkResult result, const std::string &functionName) {
   throw std::runtime_error(message);
 }
 
+#define LOG(x) std::cout <<(x) << std::endl
 
 RendererRT::RendererRT()
 {
-    std::cout << "Renderer RT" << std::endl;
+    LOG("Renderer RT");
+    #pragma region Validation Setup
     VkResult result;
     VkDebugUtilsMessengerCreateInfoEXT *debugUtilsMessengerCreateInfoPtr = NULL;
     #if defined(VALIDATION_ENABLED)
@@ -117,16 +119,13 @@ RendererRT::RendererRT()
     std::vector<const char *> instanceLayerList = {};
     std::vector<const char *> instanceExtensionList = {};
 
-    // These are added automatically by SDL_vulkan_getinstanceextensions below...
-    // #if defined(PLATFORM_WINDOWS)
-    //     "VK_KHR_win32_surface",
-    // #endif
-    // "VK_KHR_surface"};
     #if defined(VALIDATION_ENABLED)
     instanceLayerList.push_back("VK_LAYER_KHRONOS_validation");
     instanceExtensionList.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     #endif
+    #pragma endregion
 
+    #pragma region Window Surface
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Vulkan_LoadLibrary(nullptr);
     SDL_Window* window = SDL_CreateWindow(APP_NAME, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 640 * 2, 360 * 2, SDL_WINDOW_SHOWN | SDL_WINDOW_VULKAN);
@@ -136,17 +135,6 @@ RendererRT::RendererRT()
     SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, nullptr);
     extensionNames = new const char *[extensionCount];
     SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, extensionNames);
-    // const VkInstanceCreateInfo instInfo = {
-    //     VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-    //     nullptr,
-    //     0,
-    //     nullptr,
-    //     0,
-    //     nullptr,
-    //     extensionCount,
-    //     extensionNames,
-    // } ;
-
     // append all SDL based extensions to total extension name list
     for(int i = 0; i < extensionCount; i++)
     {
@@ -155,10 +143,8 @@ RendererRT::RendererRT()
     
     for(int i = 0; i < instanceExtensionList.size(); i++)
     {
-        std::cout << instanceExtensionList[i] << std::endl;
+        LOG(instanceExtensionList[i]);
     }
-    return;
-
     
     VkInstanceCreateInfo instanceCreateInfo = {
       .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
@@ -178,10 +164,41 @@ RendererRT::RendererRT()
         throwExceptionVulkanAPI(result, "vkCreateInstance");
     }
 
-    #pragma region Window Surface
     VkSurfaceKHR surfaceHandle;
     SDL_Vulkan_CreateSurface(window, instanceHandle, &surfaceHandle );
+    #pragma endregion
 
+    #pragma region Physical Device
+    uint32_t physicalDeviceCount = 0;
+    result = vkEnumeratePhysicalDevices(instanceHandle, &physicalDeviceCount, NULL);
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkEnumeratePhysicalDevices");
+    }
+    std::vector<VkPhysicalDevice> physicalDeviceHandleList(physicalDeviceCount);
+    result = vkEnumeratePhysicalDevices(instanceHandle, &physicalDeviceCount, physicalDeviceHandleList.data());
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkEnumeratePhysicalDevices");
+    }
+
+    VkPhysicalDevice activePhysicalDeviceHandle = physicalDeviceHandleList[0];
+
+    VkPhysicalDeviceProperties physicalDeviceProperties;
+    vkGetPhysicalDeviceProperties(activePhysicalDeviceHandle,&physicalDeviceProperties);
+    VkPhysicalDeviceRayTracingPipelinePropertiesKHR
+      physicalDeviceRayTracingPipelineProperties = {
+          .sType =
+              VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR,
+          .pNext = NULL};
+    VkPhysicalDeviceProperties2 physicalDeviceProperties2 = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+      .pNext = &physicalDeviceRayTracingPipelineProperties,
+      .properties = physicalDeviceProperties};
+    vkGetPhysicalDeviceProperties2(activePhysicalDeviceHandle,
+                                 &physicalDeviceProperties2);
+    VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties;
+    vkGetPhysicalDeviceMemoryProperties(activePhysicalDeviceHandle,
+                                      &physicalDeviceMemoryProperties);
+    LOG(physicalDeviceProperties.deviceName);
     #pragma endregion
 }
 #endif
