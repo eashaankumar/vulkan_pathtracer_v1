@@ -656,7 +656,8 @@ RendererRT::RendererRT()
     #pragma endregion
     
     #pragma region Ray Closest Hit Shader Module
-    std::ifstream rayClosestHitFile("compiled_shaders\\shader.rchit.spv",
+
+    std::ifstream rayClosestHitFile("compiled_shaders/shader.rchit.spv",
                                   std::ios::binary | std::ios::ate);
     if (rayClosestHitFile.fail()) LOG("FAILED TO OPEN FILE");
 
@@ -684,6 +685,39 @@ RendererRT::RendererRT()
     if (result != VK_SUCCESS) {
         throwExceptionVulkanAPI(result, "vkCreateShaderModule");
     }
+
+    #pragma endregion
+
+    #pragma region Ray Generator Shader Module
+    std::ifstream rayGenerateFile("compiled_shaders/shader.rgen.spv",
+                                std::ios::binary | std::ios::ate);
+    if (rayGenerateFile.fail()) LOG("FAILED TO OPEN shader gen");
+    std::streamsize rayGenerateFileSize = rayGenerateFile.tellg();
+    rayGenerateFile.seekg(0, std::ios::beg);
+    std::vector<uint32_t> rayGenerateShaderSource(rayGenerateFileSize /
+                                                    sizeof(uint32_t));
+
+    rayGenerateFile.read(reinterpret_cast<char *>(rayGenerateShaderSource.data()),
+                        rayGenerateFileSize);
+
+    rayGenerateFile.close();
+
+    VkShaderModuleCreateInfo rayGenerateShaderModuleCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .codeSize = (uint32_t)rayGenerateShaderSource.size() * sizeof(uint32_t),
+        .pCode = rayGenerateShaderSource.data()};
+
+    VkShaderModule rayGenerateShaderModuleHandle = VK_NULL_HANDLE;
+    result =
+        vkCreateShaderModule(deviceHandle, &rayGenerateShaderModuleCreateInfo,
+                            NULL, &rayGenerateShaderModuleHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateShaderModule");
+    }
+
     #pragma endregion
 
     #pragma endregion
