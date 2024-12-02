@@ -48,3 +48,7 @@ compile_shader_spv:
 
 learning:
 	echo argument is ${input}
+
+help:
+	echo app
+	echo compile_shader_spv input=... output=...spv

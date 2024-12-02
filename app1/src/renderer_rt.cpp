@@ -656,17 +656,17 @@ RendererRT::RendererRT()
     #pragma endregion
     
     #pragma region Ray Closest Hit Shader Module
-    std::ifstream rayClosestHitFile("shaders/shader.rchit.spv",
+    std::ifstream rayClosestHitFile("compiled_shaders\\shader.rchit.spv",
                                   std::ios::binary | std::ios::ate);
+    if (rayClosestHitFile.fail()) LOG("FAILED TO OPEN FILE");
+
     std::streamsize rayClosestHitFileSize = rayClosestHitFile.tellg();
     rayClosestHitFile.seekg(0, std::ios::beg);
     std::vector<uint32_t> rayClosestHitShaderSource(rayClosestHitFileSize /
                                                     sizeof(uint32_t));
-
     rayClosestHitFile.read(
         reinterpret_cast<char *>(rayClosestHitShaderSource.data()),
         rayClosestHitFileSize);
-
     rayClosestHitFile.close();
 
     VkShaderModuleCreateInfo rayClosestHitShaderModuleCreateInfo = {
