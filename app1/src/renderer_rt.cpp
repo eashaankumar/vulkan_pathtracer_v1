@@ -199,6 +199,493 @@ RendererRT::RendererRT()
     vkGetPhysicalDeviceMemoryProperties(activePhysicalDeviceHandle,
                                       &physicalDeviceMemoryProperties);
     LOG(physicalDeviceProperties.deviceName);
+
+    #pragma region Physical Device Features
+    VkPhysicalDeviceBufferDeviceAddressFeatures
+      physicalDeviceBufferDeviceAddressFeatures = {
+          .sType =
+              VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES,
+          .pNext = NULL,
+          .bufferDeviceAddress = VK_TRUE,
+          .bufferDeviceAddressCaptureReplay = VK_FALSE,
+          .bufferDeviceAddressMultiDevice = VK_FALSE};
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR
+      physicalDeviceAccelerationStructureFeatures = {
+          .sType =
+              VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
+          .pNext = &physicalDeviceBufferDeviceAddressFeatures,
+          .accelerationStructure = VK_TRUE,
+          .accelerationStructureCaptureReplay = VK_FALSE,
+          .accelerationStructureIndirectBuild = VK_FALSE,
+          .accelerationStructureHostCommands = VK_FALSE,
+          .descriptorBindingAccelerationStructureUpdateAfterBind = VK_FALSE};
+    VkPhysicalDeviceRayTracingPipelineFeaturesKHR
+      physicalDeviceRayTracingPipelineFeatures = {
+          .sType =
+              VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
+          .pNext = &physicalDeviceAccelerationStructureFeatures,
+          .rayTracingPipeline = VK_TRUE,
+          .rayTracingPipelineShaderGroupHandleCaptureReplay = VK_FALSE,
+          .rayTracingPipelineShaderGroupHandleCaptureReplayMixed = VK_FALSE,
+          .rayTracingPipelineTraceRaysIndirect = VK_FALSE,
+          .rayTraversalPrimitiveCulling = VK_FALSE};
+    VkPhysicalDeviceFeatures deviceFeatures = {.geometryShader = VK_TRUE};
+    #pragma endregion
+
+    #pragma region Physical Device Submission Queue Families
+    uint32_t queueFamilyPropertyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(activePhysicalDeviceHandle,
+                                            &queueFamilyPropertyCount, NULL);
+
+    std::vector<VkQueueFamilyProperties> queueFamilyPropertiesList(
+        queueFamilyPropertyCount);
+
+    vkGetPhysicalDeviceQueueFamilyProperties(activePhysicalDeviceHandle,
+                                            &queueFamilyPropertyCount,
+                                            queueFamilyPropertiesList.data());
+    uint32_t queueFamilyIndex = -1;
+    for (uint32_t x = 0; x < queueFamilyPropertiesList.size(); x++) {
+        if (queueFamilyPropertiesList[x].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+
+        VkBool32 isPresentSupported = false;
+        result = vkGetPhysicalDeviceSurfaceSupportKHR(
+            activePhysicalDeviceHandle, x, surfaceHandle, &isPresentSupported);
+
+        if (result != VK_SUCCESS) {
+            throwExceptionVulkanAPI(result, "vkGetPhysicalDeviceSurfaceSupportKHR");
+        }
+
+        if (isPresentSupported) {
+            queueFamilyIndex = x;
+            break;
+        }
+        }
+    }
+    std::vector<float> queuePrioritiesList = {1.0f};
+    VkDeviceQueueCreateInfo deviceQueueCreateInfo = {
+      .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+      .pNext = NULL,
+      .flags = 0,
+      .queueFamilyIndex = queueFamilyIndex,
+      .queueCount = 1,
+      .pQueuePriorities = queuePrioritiesList.data()};
+    #pragma endregion
+
+    #pragma region Logical Device
+    std::vector<const char *> deviceExtensionList = {
+      "VK_KHR_ray_tracing_pipeline",
+      "VK_KHR_acceleration_structure",
+      "VK_EXT_descriptor_indexing",
+      "VK_KHR_maintenance3",
+      "VK_KHR_buffer_device_address",
+      "VK_KHR_deferred_host_operations",
+      "VK_KHR_swapchain"};
+    VkDeviceCreateInfo deviceCreateInfo = {
+      .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+      .pNext = &physicalDeviceRayTracingPipelineFeatures,
+      .flags = 0,
+      .queueCreateInfoCount = 1,
+      .pQueueCreateInfos = &deviceQueueCreateInfo,
+      .enabledLayerCount = 0,
+      .ppEnabledLayerNames = NULL,
+      .enabledExtensionCount = (uint32_t)deviceExtensionList.size(),
+      .ppEnabledExtensionNames = deviceExtensionList.data(),
+      .pEnabledFeatures = &deviceFeatures};
+
+    VkDevice deviceHandle = VK_NULL_HANDLE;
+    result = vkCreateDevice(activePhysicalDeviceHandle, &deviceCreateInfo, NULL,
+                          &deviceHandle);
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateDevice");
+    }
+    #pragma endregion
+    
+    #pragma region Submission Queue
+    VkQueue queueHandle = VK_NULL_HANDLE;
+    vkGetDeviceQueue(deviceHandle, queueFamilyIndex, 0, &queueHandle);
+    #pragma endregion
+
+    #pragma region Device Pointer Functions
+    PFN_vkGetBufferDeviceAddressKHR pvkGetBufferDeviceAddressKHR =
+      (PFN_vkGetBufferDeviceAddressKHR)vkGetDeviceProcAddr(
+          deviceHandle, "vkGetBufferDeviceAddressKHR");
+
+    PFN_vkCreateRayTracingPipelinesKHR pvkCreateRayTracingPipelinesKHR =
+        (PFN_vkCreateRayTracingPipelinesKHR)vkGetDeviceProcAddr(
+            deviceHandle, "vkCreateRayTracingPipelinesKHR");
+
+    PFN_vkGetAccelerationStructureBuildSizesKHR
+        pvkGetAccelerationStructureBuildSizesKHR =
+            (PFN_vkGetAccelerationStructureBuildSizesKHR)vkGetDeviceProcAddr(
+                deviceHandle, "vkGetAccelerationStructureBuildSizesKHR");
+
+    PFN_vkCreateAccelerationStructureKHR pvkCreateAccelerationStructureKHR =
+        (PFN_vkCreateAccelerationStructureKHR)vkGetDeviceProcAddr(
+            deviceHandle, "vkCreateAccelerationStructureKHR");
+
+    PFN_vkDestroyAccelerationStructureKHR pvkDestroyAccelerationStructureKHR =
+        (PFN_vkDestroyAccelerationStructureKHR)vkGetDeviceProcAddr(
+            deviceHandle, "vkDestroyAccelerationStructureKHR");
+
+    PFN_vkGetAccelerationStructureDeviceAddressKHR
+        pvkGetAccelerationStructureDeviceAddressKHR =
+            (PFN_vkGetAccelerationStructureDeviceAddressKHR)vkGetDeviceProcAddr(
+                deviceHandle, "vkGetAccelerationStructureDeviceAddressKHR");
+
+    PFN_vkCmdBuildAccelerationStructuresKHR pvkCmdBuildAccelerationStructuresKHR =
+        (PFN_vkCmdBuildAccelerationStructuresKHR)vkGetDeviceProcAddr(
+            deviceHandle, "vkCmdBuildAccelerationStructuresKHR");
+
+    PFN_vkGetRayTracingShaderGroupHandlesKHR
+        pvkGetRayTracingShaderGroupHandlesKHR =
+            (PFN_vkGetRayTracingShaderGroupHandlesKHR)vkGetDeviceProcAddr(
+                deviceHandle, "vkGetRayTracingShaderGroupHandlesKHR");
+
+    PFN_vkCmdTraceRaysKHR pvkCmdTraceRaysKHR =
+        (PFN_vkCmdTraceRaysKHR)vkGetDeviceProcAddr(deviceHandle,
+                                                    "vkCmdTraceRaysKHR");
+
+    VkMemoryAllocateFlagsInfo memoryAllocateFlagsInfo = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO,
+        .pNext = NULL,
+        .flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT,
+        .deviceMask = 0};
+
+    #pragma endregion
+
+    #pragma region Command Pool
+    VkCommandPoolCreateInfo commandPoolCreateInfo = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+      .pNext = NULL,
+      .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+      .queueFamilyIndex = queueFamilyIndex};
+
+    VkCommandPool commandPoolHandle = VK_NULL_HANDLE;
+    result = vkCreateCommandPool(deviceHandle, &commandPoolCreateInfo, NULL,
+                                &commandPoolHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateCommandPool");
+    }
+    #pragma endregion
+    
+    #pragma region Command Buffers
+    VkCommandBufferAllocateInfo commandBufferAllocateInfo = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      .pNext = NULL,
+      .commandPool = commandPoolHandle,
+      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+      .commandBufferCount = 16};
+
+    std::vector<VkCommandBuffer> commandBufferHandleList =
+        std::vector<VkCommandBuffer>(16, VK_NULL_HANDLE);
+
+    result = vkAllocateCommandBuffers(deviceHandle, &commandBufferAllocateInfo,
+                                        commandBufferHandleList.data());
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkAllocateCommandBuffers");
+    }
+    #pragma endregion
+    
+    #pragma region Surface Features
+    VkSurfaceCapabilitiesKHR surfaceCapabilities;
+    result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+        activePhysicalDeviceHandle, surfaceHandle, &surfaceCapabilities);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result,
+                                "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
+    }
+
+    uint32_t surfaceFormatCount = 0;
+    result = vkGetPhysicalDeviceSurfaceFormatsKHR(
+        activePhysicalDeviceHandle, surfaceHandle, &surfaceFormatCount, NULL);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkGetPhysicalDeviceSurfaceFormatsKHR");
+    }
+
+    std::vector<VkSurfaceFormatKHR> surfaceFormatList(surfaceFormatCount);
+    result = vkGetPhysicalDeviceSurfaceFormatsKHR(
+        activePhysicalDeviceHandle, surfaceHandle, &surfaceFormatCount,
+        surfaceFormatList.data());
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkGetPhysicalDeviceSurfaceFormatsKHR");
+    }
+
+    uint32_t presentModeCount = 0;
+    result = vkGetPhysicalDeviceSurfacePresentModesKHR(
+        activePhysicalDeviceHandle, surfaceHandle, &presentModeCount, NULL);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result,
+                                "vkGetPhysicalDeviceSurfacePresentModesKHR");
+    }
+
+    std::vector<VkPresentModeKHR> presentModeList(presentModeCount);
+    result = vkGetPhysicalDeviceSurfacePresentModesKHR(
+        activePhysicalDeviceHandle, surfaceHandle, &presentModeCount,
+        presentModeList.data());
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result,
+                                "vkGetPhysicalDeviceSurfacePresentModesKHR");
+    }
+    #pragma endregion
+
+    #pragma region Swapchain
+    VkSwapchainCreateInfoKHR swapchainCreateInfo = {
+      .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+      .pNext = NULL,
+      .flags = 0,
+      .surface = surfaceHandle,
+      .minImageCount = surfaceCapabilities.minImageCount + 1,
+      .imageFormat = surfaceFormatList[0].format,
+      .imageColorSpace = surfaceFormatList[0].colorSpace,
+      .imageExtent = surfaceCapabilities.currentExtent,
+      .imageArrayLayers = 1,
+      .imageUsage = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+      .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+      .queueFamilyIndexCount = 1,
+      .pQueueFamilyIndices = &queueFamilyIndex,
+      .preTransform = surfaceCapabilities.currentTransform,
+      .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+      .presentMode = presentModeList[0],
+      .clipped = VK_TRUE,
+      .oldSwapchain = VK_NULL_HANDLE};
+
+    VkSwapchainKHR swapchainHandle = VK_NULL_HANDLE;
+    result = vkCreateSwapchainKHR(deviceHandle, &swapchainCreateInfo, NULL,
+                                    &swapchainHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateSwapchainKHR");
+    }
+    #pragma endregion
+
+    #pragma region Swapchain Images
+    uint32_t swapchainImageCount = 0;
+    result = vkGetSwapchainImagesKHR(deviceHandle, swapchainHandle,
+                                    &swapchainImageCount, NULL);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkGetSwapchainImagesKHR");
+    }
+
+    std::vector<VkImage> swapchainImageHandleList(swapchainImageCount);
+    result = vkGetSwapchainImagesKHR(deviceHandle, swapchainHandle,
+                                    &swapchainImageCount,
+                                    swapchainImageHandleList.data());
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkGetSwapchainImagesKHR");
+    }
+
+    std::vector<VkImageView> swapchainImageViewHandleList(swapchainImageCount,
+                                                            VK_NULL_HANDLE);
+
+    for (uint32_t x = 0; x < swapchainImageCount; x++) {
+        VkImageViewCreateInfo imageViewCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0,
+            .image = swapchainImageHandleList[x],
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format = surfaceFormatList[0].format,
+            .components = {VK_COMPONENT_SWIZZLE_IDENTITY,
+                        VK_COMPONENT_SWIZZLE_IDENTITY,
+                        VK_COMPONENT_SWIZZLE_IDENTITY,
+                        VK_COMPONENT_SWIZZLE_IDENTITY},
+            .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
+
+        result = vkCreateImageView(deviceHandle, &imageViewCreateInfo, NULL,
+                                &swapchainImageViewHandleList[x]);
+
+        if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateImageView");
+        }
+    }
+    #pragma endregion
+
+    #pragma region Descriptor Pool Set
+    std::vector<VkDescriptorPoolSize> descriptorPoolSizeList = {
+      {.type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+       .descriptorCount = 1},
+      {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = 1},
+      {.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount = 4},
+      {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .descriptorCount = 1}};
+
+    VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .pNext = NULL,
+        .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+        .maxSets = 2,
+        .poolSizeCount = (uint32_t)descriptorPoolSizeList.size(),
+        .pPoolSizes = descriptorPoolSizeList.data()};
+
+    VkDescriptorPool descriptorPoolHandle = VK_NULL_HANDLE;
+    result = vkCreateDescriptorPool(deviceHandle, &descriptorPoolCreateInfo, NULL,
+                                    &descriptorPoolHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateDescriptorPool");
+    }
+    #pragma endregion
+
+    #pragma region Descriptor Pool Set Layout
+    std::vector<VkDescriptorSetLayoutBinding> descriptorSetLayoutBindingList = {
+      {.binding = 0,
+       .descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+       .descriptorCount = 1,
+       .stageFlags =
+           VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+       .pImmutableSamplers = NULL},
+      {.binding = 1,
+       .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+       .descriptorCount = 1,
+       .stageFlags =
+           VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+       .pImmutableSamplers = NULL},
+      {.binding = 2,
+       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+       .descriptorCount = 1,
+       .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+       .pImmutableSamplers = NULL},
+      {.binding = 3,
+       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+       .descriptorCount = 1,
+       .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+       .pImmutableSamplers = NULL},
+      {.binding = 4,
+       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+       .descriptorCount = 1,
+       .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
+       .pImmutableSamplers = NULL}};
+
+    VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .bindingCount = (uint32_t)descriptorSetLayoutBindingList.size(),
+        .pBindings = descriptorSetLayoutBindingList.data()};
+
+    VkDescriptorSetLayout descriptorSetLayoutHandle = VK_NULL_HANDLE;
+    result =
+        vkCreateDescriptorSetLayout(deviceHandle, &descriptorSetLayoutCreateInfo,
+                                    NULL, &descriptorSetLayoutHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateDescriptorSetLayout");
+    }
+    #pragma endregion
+
+    #pragma region Material Descriptor Set Layout
+    std::vector<VkDescriptorSetLayoutBinding>
+      materialDescriptorSetLayoutBindingList = {
+          {.binding = 0,
+           .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+           .descriptorCount = 1,
+           .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+           .pImmutableSamplers = NULL},
+          {.binding = 1,
+           .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+           .descriptorCount = 1,
+           .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+           .pImmutableSamplers = NULL}};
+
+    VkDescriptorSetLayoutCreateInfo materialDescriptorSetLayoutCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .bindingCount = (uint32_t)materialDescriptorSetLayoutBindingList.size(),
+        .pBindings = materialDescriptorSetLayoutBindingList.data()};
+
+    VkDescriptorSetLayout materialDescriptorSetLayoutHandle = VK_NULL_HANDLE;
+    result = vkCreateDescriptorSetLayout(
+        deviceHandle, &materialDescriptorSetLayoutCreateInfo, NULL,
+        &materialDescriptorSetLayoutHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateDescriptorSetLayout");
+    }
+
+    #pragma endregion
+
+    #pragma region Allocator Descriptor Set
+    std::vector<VkDescriptorSetLayout> descriptorSetLayoutHandleList = {
+      descriptorSetLayoutHandle, materialDescriptorSetLayoutHandle};
+
+    VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .pNext = NULL,
+        .descriptorPool = descriptorPoolHandle,
+        .descriptorSetCount = (uint32_t)descriptorSetLayoutHandleList.size(),
+        .pSetLayouts = descriptorSetLayoutHandleList.data()};
+
+    std::vector<VkDescriptorSet> descriptorSetHandleList =
+        std::vector<VkDescriptorSet>(2, VK_NULL_HANDLE);
+
+    result = vkAllocateDescriptorSets(deviceHandle, &descriptorSetAllocateInfo,
+                                        descriptorSetHandleList.data());
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkAllocateDescriptorSets");
+    }
+    #pragma endregion
+
+    #pragma region Pipeline Layout
+    VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+      .pNext = NULL,
+      .flags = 0,
+      .setLayoutCount = (uint32_t)descriptorSetLayoutHandleList.size(),
+      .pSetLayouts = descriptorSetLayoutHandleList.data(),
+      .pushConstantRangeCount = 0,
+      .pPushConstantRanges = NULL};
+
+    VkPipelineLayout pipelineLayoutHandle = VK_NULL_HANDLE;
+    result = vkCreatePipelineLayout(deviceHandle, &pipelineLayoutCreateInfo, NULL,
+                                    &pipelineLayoutHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreatePipelineLayout");
+    }
+
+    #pragma endregion
+    
+    #pragma region Ray Closest Hit Shader Module
+    std::ifstream rayClosestHitFile("shaders/shader.rchit.spv",
+                                  std::ios::binary | std::ios::ate);
+    std::streamsize rayClosestHitFileSize = rayClosestHitFile.tellg();
+    rayClosestHitFile.seekg(0, std::ios::beg);
+    std::vector<uint32_t> rayClosestHitShaderSource(rayClosestHitFileSize /
+                                                    sizeof(uint32_t));
+
+    rayClosestHitFile.read(
+        reinterpret_cast<char *>(rayClosestHitShaderSource.data()),
+        rayClosestHitFileSize);
+
+    rayClosestHitFile.close();
+
+    VkShaderModuleCreateInfo rayClosestHitShaderModuleCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .codeSize = (uint32_t)rayClosestHitShaderSource.size() * sizeof(uint32_t),
+        .pCode = rayClosestHitShaderSource.data()};
+
+    VkShaderModule rayClosestHitShaderModuleHandle = VK_NULL_HANDLE;
+    result =
+        vkCreateShaderModule(deviceHandle, &rayClosestHitShaderModuleCreateInfo,
+                            NULL, &rayClosestHitShaderModuleHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateShaderModule");
+    }
+    #pragma endregion
+
     #pragma endregion
 }
 #endif

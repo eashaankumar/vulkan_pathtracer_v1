@@ -40,3 +40,11 @@ app: ${APP}/src/*.cpp
 	${SRCS} \
 	-L/usr/local/lib -Lstdlib ${LIBSDIR} ${LIBS} \
 	-o ${APP}
+
+compile_shader_spv: 
+	echo Input: ${input}
+	echo Output: ${output}
+	C:\VulkanSDK\1.3.224.1\Bin\glslc.exe ${input} -o ${output} --target-spv=spv1.4
+
+learning:
+	echo argument is ${input}
