@@ -136,11 +136,7 @@ int main() {
 
   std::vector<const char *> instanceLayerList = {};
   std::vector<const char *> instanceExtensionList = {
-#if defined(PLATFORM_LINUX)
-      "VK_KHR_xlib_surface",
-#elif defined(PLATFORM_ANDROID)
-      "VK_KHR_android_surface",
-#elif defined(PLATFORM_WINDOWS)
+#if defined(PLATFORM_WINDOWS)
       "VK_KHR_win32_surface",
 #endif
       "VK_KHR_surface"};

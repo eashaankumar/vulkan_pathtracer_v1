@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++20 -Wall -pedantic-errors -g
+CXXFLAGS = -std=c++23 -Wall -pedantic-errors -g
 
 APP = app1
 
