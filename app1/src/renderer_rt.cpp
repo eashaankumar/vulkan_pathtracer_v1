@@ -8,6 +8,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <math.h>
 // #include <vulkan/vulkan_win32.h>
 
 #ifdef RENDERER_RT
@@ -2806,6 +2807,104 @@ RendererRT::RendererRT()
 
         currentFrame = (currentFrame + 1) % swapchainImageCount;
     }
+    #pragma endregion
+
+    #pragma region Cleanup
+    result = vkDeviceWaitIdle(deviceHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkDeviceWaitIdle");
+    }
+
+    for (uint32_t x = 0; x < swapchainImageCount; x++) {
+        vkDestroySemaphore(deviceHandle, writeImageSemaphoreHandleList[x], NULL);
+        vkDestroySemaphore(deviceHandle, acquireImageSemaphoreHandleList[x], NULL);
+        vkDestroyFence(deviceHandle, imageAvailableFenceHandleList[x], NULL);
+    }
+
+    delete[] shaderHandleBuffer;
+    vkFreeMemory(deviceHandle, shaderBindingTableDeviceMemoryHandle, NULL);
+    vkDestroyBuffer(deviceHandle, shaderBindingTableBufferHandle, NULL);
+
+    vkFreeMemory(deviceHandle, materialDeviceMemoryHandle, NULL);
+    vkDestroyBuffer(deviceHandle, materialBufferHandle, NULL);
+    vkFreeMemory(deviceHandle, materialIndexDeviceMemoryHandle, NULL);
+    vkDestroyBuffer(deviceHandle, materialIndexBufferHandle, NULL);
+    vkDestroyFence(deviceHandle,
+                    rayTraceImageBarrierAccelerationStructureBuildFenceHandle,
+                    NULL);
+
+    vkDestroyImageView(deviceHandle, rayTraceImageViewHandle, NULL);
+    vkFreeMemory(deviceHandle, rayTraceImageDeviceMemoryHandle, NULL);
+    vkDestroyImage(deviceHandle, rayTraceImageHandle, NULL);
+    vkFreeMemory(deviceHandle, uniformDeviceMemoryHandle, NULL);
+    vkDestroyBuffer(deviceHandle, uniformBufferHandle, NULL);
+    vkDestroyFence(deviceHandle, topLevelAccelerationStructureBuildFenceHandle,
+                    NULL);
+
+    vkFreeMemory(deviceHandle,
+                topLevelAccelerationStructureDeviceScratchMemoryHandle, NULL);
+
+    vkDestroyBuffer(deviceHandle,
+                    topLevelAccelerationStructureScratchBufferHandle, NULL);
+
+    pvkDestroyAccelerationStructureKHR(deviceHandle,
+                                        topLevelAccelerationStructureHandle, NULL);
+
+    vkFreeMemory(deviceHandle, topLevelAccelerationStructureDeviceMemoryHandle,
+                NULL);
+
+    vkDestroyBuffer(deviceHandle, topLevelAccelerationStructureBufferHandle,
+                    NULL);
+
+    vkFreeMemory(deviceHandle, bottomLevelGeometryInstanceDeviceMemoryHandle,
+                NULL);
+
+    vkDestroyBuffer(deviceHandle, bottomLevelGeometryInstanceBufferHandle, NULL);
+    vkDestroyFence(deviceHandle, bottomLevelAccelerationStructureBuildFenceHandle,
+                    NULL);
+
+    vkFreeMemory(deviceHandle,
+                bottomLevelAccelerationStructureDeviceScratchMemoryHandle, NULL);
+
+    vkDestroyBuffer(deviceHandle,
+                    bottomLevelAccelerationStructureScratchBufferHandle, NULL);
+
+    pvkDestroyAccelerationStructureKHR(
+        deviceHandle, bottomLevelAccelerationStructureHandle, NULL);
+
+    vkFreeMemory(deviceHandle, bottomLevelAccelerationStructureDeviceMemoryHandle,
+                NULL);
+
+    vkDestroyBuffer(deviceHandle, bottomLevelAccelerationStructureBufferHandle,
+                    NULL);
+
+    vkFreeMemory(deviceHandle, indexDeviceMemoryHandle, NULL);
+    vkDestroyBuffer(deviceHandle, indexBufferHandle, NULL);
+    vkFreeMemory(deviceHandle, vertexDeviceMemoryHandle, NULL);
+    vkDestroyBuffer(deviceHandle, vertexBufferHandle, NULL);
+    vkDestroyPipeline(deviceHandle, rayTracingPipelineHandle, NULL);
+    vkDestroyShaderModule(deviceHandle, rayMissShadowShaderModuleHandle, NULL);
+    vkDestroyShaderModule(deviceHandle, rayMissShaderModuleHandle, NULL);
+    vkDestroyShaderModule(deviceHandle, rayGenerateShaderModuleHandle, NULL);
+    vkDestroyShaderModule(deviceHandle, rayClosestHitShaderModuleHandle, NULL);
+    vkDestroyPipelineLayout(deviceHandle, pipelineLayoutHandle, NULL);
+    vkDestroyDescriptorSetLayout(deviceHandle, materialDescriptorSetLayoutHandle,
+                                NULL);
+
+    vkDestroyDescriptorSetLayout(deviceHandle, descriptorSetLayoutHandle, NULL);
+    vkDestroyDescriptorPool(deviceHandle, descriptorPoolHandle, NULL);
+
+    for (uint32_t x = 0; x < swapchainImageCount; x++) {
+        vkDestroyImageView(deviceHandle, swapchainImageViewHandleList[x], NULL);
+    }
+
+    vkDestroySwapchainKHR(deviceHandle, swapchainHandle, NULL);
+    vkDestroyCommandPool(deviceHandle, commandPoolHandle, NULL);
+    vkDestroyDevice(deviceHandle, NULL);
+    vkDestroySurfaceKHR(instanceHandle, surfaceHandle, NULL);
+    vkDestroyInstance(instanceHandle, NULL);
+    return;
     #pragma endregion
 }
 #endif
