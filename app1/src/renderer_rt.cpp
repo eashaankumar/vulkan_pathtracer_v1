@@ -1804,6 +1804,1008 @@ RendererRT::RendererRT()
     }
     #pragma endregion
 
+    #pragma region Uniform Buffer
+    struct UniformStructure {
+        float cameraPosition[4] = {0, 0, 0, 1};
+        float cameraRight[4] = {1, 0, 0, 1};
+        float cameraUp[4] = {0, 1, 0, 1};
+        float cameraForward[4] = {0, 0, 1, 1};
 
+        uint32_t frameCount = 0;
+    } uniformStructure;
+
+    VkBufferCreateInfo uniformBufferCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .size = sizeof(UniformStructure),
+        .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 1,
+        .pQueueFamilyIndices = &queueFamilyIndex};
+
+    VkBuffer uniformBufferHandle = VK_NULL_HANDLE;
+    result = vkCreateBuffer(deviceHandle, &uniformBufferCreateInfo, NULL,
+                            &uniformBufferHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateBuffer");
+    }
+
+    VkMemoryRequirements uniformMemoryRequirements;
+    vkGetBufferMemoryRequirements(deviceHandle, uniformBufferHandle,
+                                    &uniformMemoryRequirements);
+
+    uint32_t uniformMemoryTypeIndex = -1;
+    for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
+        x++) {
+        if ((uniformMemoryRequirements.memoryTypeBits & (1 << x)) &&
+            (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ==
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+
+        uniformMemoryTypeIndex = x;
+        break;
+        }
+    }
+
+    VkMemoryAllocateInfo uniformMemoryAllocateInfo = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .pNext = &memoryAllocateFlagsInfo,
+        .allocationSize = uniformMemoryRequirements.size,
+        .memoryTypeIndex = uniformMemoryTypeIndex};
+
+    VkDeviceMemory uniformDeviceMemoryHandle = VK_NULL_HANDLE;
+    result = vkAllocateMemory(deviceHandle, &uniformMemoryAllocateInfo, NULL,
+                                &uniformDeviceMemoryHandle);
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkAllocateMemory");
+    }
+
+    result = vkBindBufferMemory(deviceHandle, uniformBufferHandle,
+                                uniformDeviceMemoryHandle, 0);
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkBindBufferMemory");
+    }
+
+    void *hostUniformMemoryBuffer;
+    result = vkMapMemory(deviceHandle, uniformDeviceMemoryHandle, 0,
+                        sizeof(UniformStructure), 0, &hostUniformMemoryBuffer);
+
+    memcpy(hostUniformMemoryBuffer, &uniformStructure, sizeof(UniformStructure));
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkMapMemory");
+    }
+
+    vkUnmapMemory(deviceHandle, uniformDeviceMemoryHandle);
+    #pragma endregion
+
+    #pragma region Ray Trace Image
+    VkImageCreateInfo rayTraceImageCreateInfo = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+      .pNext = NULL,
+      .flags = 0,
+      .imageType = VK_IMAGE_TYPE_2D,
+      .format = surfaceFormatList[0].format,
+      .extent = {.width = surfaceCapabilities.currentExtent.width,
+                 .height = surfaceCapabilities.currentExtent.height,
+                 .depth = 1},
+      .mipLevels = 1,
+      .arrayLayers = 1,
+      .samples = VK_SAMPLE_COUNT_1_BIT,
+      .tiling = VK_IMAGE_TILING_OPTIMAL,
+      .usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+      .queueFamilyIndexCount = 1,
+      .pQueueFamilyIndices = &queueFamilyIndex,
+      .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+
+    VkImage rayTraceImageHandle = VK_NULL_HANDLE;
+    result = vkCreateImage(deviceHandle, &rayTraceImageCreateInfo, NULL,
+                            &rayTraceImageHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateImage");
+    }
+
+    VkMemoryRequirements rayTraceImageMemoryRequirements;
+    vkGetImageMemoryRequirements(deviceHandle, rayTraceImageHandle,
+                                &rayTraceImageMemoryRequirements);
+
+    uint32_t rayTraceImageMemoryTypeIndex = -1;
+    for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
+        x++) {
+        if ((rayTraceImageMemoryRequirements.memoryTypeBits & (1 << x)) &&
+            (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) ==
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
+
+        rayTraceImageMemoryTypeIndex = x;
+        break;
+        }
+    }
+
+    VkMemoryAllocateInfo rayTraceImageMemoryAllocateInfo = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .pNext = NULL,
+        .allocationSize = rayTraceImageMemoryRequirements.size,
+        .memoryTypeIndex = rayTraceImageMemoryTypeIndex};
+
+    VkDeviceMemory rayTraceImageDeviceMemoryHandle = VK_NULL_HANDLE;
+    result = vkAllocateMemory(deviceHandle, &rayTraceImageMemoryAllocateInfo,
+                                NULL, &rayTraceImageDeviceMemoryHandle);
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkAllocateMemory");
+    }
+
+    result = vkBindImageMemory(deviceHandle, rayTraceImageHandle,
+                                rayTraceImageDeviceMemoryHandle, 0);
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkBindImageMemory");
+    }
+
+    VkImageViewCreateInfo rayTraceImageViewCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .image = rayTraceImageHandle,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = surfaceFormatList[0].format,
+        .components = {.r = VK_COMPONENT_SWIZZLE_IDENTITY,
+                        .g = VK_COMPONENT_SWIZZLE_IDENTITY,
+                        .b = VK_COMPONENT_SWIZZLE_IDENTITY,
+                        .a = VK_COMPONENT_SWIZZLE_IDENTITY},
+        .subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                            .baseMipLevel = 0,
+                            .levelCount = 1,
+                            .baseArrayLayer = 0,
+                            .layerCount = 1}};
+
+    VkImageView rayTraceImageViewHandle = VK_NULL_HANDLE;
+    result = vkCreateImageView(deviceHandle, &rayTraceImageViewCreateInfo, NULL,
+                                &rayTraceImageViewHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateImageView");
+    }
+
+    #pragma endregion
+
+    #pragma region Ray Trace Image Barrier
+    // (VK_IMAGE_LAYOUT_UNDEFINED -> VK_IMAGE_LAYOUT_GENERAL)
+    VkCommandBufferBeginInfo rayTraceImageBarrierCommandBufferBeginInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .pNext = NULL,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        .pInheritanceInfo = NULL};
+
+    result = vkBeginCommandBuffer(commandBufferHandleList.back(),
+                                    &rayTraceImageBarrierCommandBufferBeginInfo);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkBeginCommandBuffer");
+    }
+
+    VkImageMemoryBarrier rayTraceGeneralMemoryBarrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .pNext = NULL,
+        .srcAccessMask = 0,
+        .dstAccessMask = 0,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+        .srcQueueFamilyIndex = queueFamilyIndex,
+        .dstQueueFamilyIndex = queueFamilyIndex,
+        .image = rayTraceImageHandle,
+        .subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                            .baseMipLevel = 0,
+                            .levelCount = 1,
+                            .baseArrayLayer = 0,
+                            .layerCount = 1}};
+
+    vkCmdPipelineBarrier(commandBufferHandleList.back(),
+                        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 0, NULL,
+                        1, &rayTraceGeneralMemoryBarrier);
+
+    result = vkEndCommandBuffer(commandBufferHandleList.back());
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkEndCommandBuffer");
+    }
+
+    VkSubmitInfo rayTraceImageBarrierAccelerationStructureBuildSubmitInfo = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .pNext = NULL,
+        .waitSemaphoreCount = 0,
+        .pWaitSemaphores = NULL,
+        .pWaitDstStageMask = NULL,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &commandBufferHandleList.back(),
+        .signalSemaphoreCount = 0,
+        .pSignalSemaphores = NULL};
+
+    VkFenceCreateInfo
+        rayTraceImageBarrierAccelerationStructureBuildFenceCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0};
+
+    VkFence rayTraceImageBarrierAccelerationStructureBuildFenceHandle =
+        VK_NULL_HANDLE;
+    result = vkCreateFence(
+        deviceHandle,
+        &rayTraceImageBarrierAccelerationStructureBuildFenceCreateInfo, NULL,
+        &rayTraceImageBarrierAccelerationStructureBuildFenceHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateFence");
+    }
+
+    result = vkQueueSubmit(
+        queueHandle, 1, &rayTraceImageBarrierAccelerationStructureBuildSubmitInfo,
+        rayTraceImageBarrierAccelerationStructureBuildFenceHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkQueueSubmit");
+    }
+
+    result = vkWaitForFences(
+        deviceHandle, 1,
+        &rayTraceImageBarrierAccelerationStructureBuildFenceHandle, true,
+        UINT32_MAX);
+
+    if (result != VK_SUCCESS && result != VK_TIMEOUT) {
+        throwExceptionVulkanAPI(result, "vkWaitForFences");
+    }
+    #pragma endregion
+
+    #pragma region Update Descriptor Set
+    VkWriteDescriptorSetAccelerationStructureKHR
+      accelerationStructureDescriptorInfo = {
+          .sType =
+              VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
+          .pNext = NULL,
+          .accelerationStructureCount = 1,
+          .pAccelerationStructures = &topLevelAccelerationStructureHandle};
+
+    VkDescriptorBufferInfo uniformDescriptorInfo = {
+        .buffer = uniformBufferHandle, .offset = 0, .range = VK_WHOLE_SIZE};
+
+    VkDescriptorBufferInfo indexDescriptorInfo = {
+        .buffer = indexBufferHandle, .offset = 0, .range = VK_WHOLE_SIZE};
+
+    VkDescriptorBufferInfo vertexDescriptorInfo = {
+        .buffer = vertexBufferHandle, .offset = 0, .range = VK_WHOLE_SIZE};
+
+    VkDescriptorImageInfo rayTraceImageDescriptorInfo = {
+      .sampler = VK_NULL_HANDLE,
+      .imageView = rayTraceImageViewHandle,
+      .imageLayout = VK_IMAGE_LAYOUT_GENERAL};
+
+    std::vector<VkWriteDescriptorSet> writeDescriptorSetList = {
+      {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+       .pNext = &accelerationStructureDescriptorInfo,
+       .dstSet = descriptorSetHandleList[0],
+       .dstBinding = 0,
+       .dstArrayElement = 0,
+       .descriptorCount = 1,
+       .descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+       .pImageInfo = NULL,
+       .pBufferInfo = NULL,
+       .pTexelBufferView = NULL},
+      {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+       .pNext = NULL,
+       .dstSet = descriptorSetHandleList[0],
+       .dstBinding = 1,
+       .dstArrayElement = 0,
+       .descriptorCount = 1,
+       .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+       .pImageInfo = NULL,
+       .pBufferInfo = &uniformDescriptorInfo,
+       .pTexelBufferView = NULL},
+      {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+       .pNext = NULL,
+       .dstSet = descriptorSetHandleList[0],
+       .dstBinding = 2,
+       .dstArrayElement = 0,
+       .descriptorCount = 1,
+       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+       .pImageInfo = NULL,
+       .pBufferInfo = &indexDescriptorInfo,
+       .pTexelBufferView = NULL},
+      {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+       .pNext = NULL,
+       .dstSet = descriptorSetHandleList[0],
+       .dstBinding = 3,
+       .dstArrayElement = 0,
+       .descriptorCount = 1,
+       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+       .pImageInfo = NULL,
+       .pBufferInfo = &vertexDescriptorInfo,
+       .pTexelBufferView = NULL},
+      {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+       .pNext = NULL,
+       .dstSet = descriptorSetHandleList[0],
+       .dstBinding = 4,
+       .dstArrayElement = 0,
+       .descriptorCount = 1,
+       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+       .pImageInfo = &rayTraceImageDescriptorInfo,
+       .pBufferInfo = NULL,
+       .pTexelBufferView = NULL}};
+
+    vkUpdateDescriptorSets(deviceHandle, writeDescriptorSetList.size(),
+                            writeDescriptorSetList.data(), 0, NULL);
+    #pragma endregion
+
+    #pragma region Material Index Buffer
+    std::vector<uint32_t> materialIndexList;
+    materialIndexList.push_back(0);
+    // for (tinyobj::shape_t shape : shapes) {
+    //     for (int index : shape.mesh.material_ids) {
+    //     materialIndexList.push_back(index);
+    //     }
+    // }
+
+    VkBufferCreateInfo materialIndexBufferCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .size = sizeof(uint32_t) * materialIndexList.size(),
+        .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 1,
+        .pQueueFamilyIndices = &queueFamilyIndex};
+
+    VkBuffer materialIndexBufferHandle = VK_NULL_HANDLE;
+    result = vkCreateBuffer(deviceHandle, &materialIndexBufferCreateInfo, NULL,
+                            &materialIndexBufferHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateBuffer");
+    }
+
+    VkMemoryRequirements materialIndexMemoryRequirements;
+    vkGetBufferMemoryRequirements(deviceHandle, materialIndexBufferHandle,
+                                    &materialIndexMemoryRequirements);
+
+    uint32_t materialIndexMemoryTypeIndex = -1;
+    for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
+        x++) {
+        if ((materialIndexMemoryRequirements.memoryTypeBits & (1 << x)) &&
+            (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ==
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+
+        materialIndexMemoryTypeIndex = x;
+        break;
+        }
+    }
+
+    VkMemoryAllocateInfo materialIndexMemoryAllocateInfo = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .pNext = &memoryAllocateFlagsInfo,
+        .allocationSize = materialIndexMemoryRequirements.size,
+        .memoryTypeIndex = materialIndexMemoryTypeIndex};
+
+    VkDeviceMemory materialIndexDeviceMemoryHandle = VK_NULL_HANDLE;
+    result = vkAllocateMemory(deviceHandle, &materialIndexMemoryAllocateInfo,
+                                NULL, &materialIndexDeviceMemoryHandle);
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkAllocateMemory");
+    }
+
+    result = vkBindBufferMemory(deviceHandle, materialIndexBufferHandle,
+                                materialIndexDeviceMemoryHandle, 0);
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkBindBufferMemory");
+    }
+
+    void *hostMaterialIndexMemoryBuffer;
+    result = vkMapMemory(deviceHandle, materialIndexDeviceMemoryHandle, 0,
+                        sizeof(uint32_t) * materialIndexList.size(), 0,
+                        &hostMaterialIndexMemoryBuffer);
+
+    memcpy(hostMaterialIndexMemoryBuffer, materialIndexList.data(),
+            sizeof(uint32_t) * materialIndexList.size());
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkMapMemory");
+    }
+
+    vkUnmapMemory(deviceHandle, materialIndexDeviceMemoryHandle);
+
+    #pragma endregion
+
+    #pragma region Material Buffer
+    struct Material {
+        float ambient[4] = {0, 0, 0, 0};
+        float diffuse[4] = {0, 0, 0, 0};
+        float specular[4] = {0, 0, 0, 0};
+        float emission[4] = {0, 0, 0, 0};
+    };
+
+    std::vector<Material> materialList(1);
+    /*for (uint32_t x = 0; x < materials.size(); x++) {
+        memcpy(materialList[x].ambient, materials[x].ambient, sizeof(float) * 3);
+        memcpy(materialList[x].diffuse, materials[x].diffuse, sizeof(float) * 3);
+        memcpy(materialList[x].specular, materials[x].specular, sizeof(float) * 3);
+        memcpy(materialList[x].emission, materials[x].emission, sizeof(float) * 3);
+    }*/
+    Material mat;
+    mat.ambient[0] = 1;
+    mat.ambient[1] = 1;
+    mat.ambient[2] = 1;
+    mat.ambient[3] = 1;
+
+    mat.diffuse[0] = 1;
+    mat.diffuse[1] = 0;
+    mat.diffuse[2] = 1;
+    mat.diffuse[3] = 1;
+
+    materialList.push_back(mat);
+
+    VkBufferCreateInfo materialBufferCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .size = sizeof(Material) * materialList.size(),
+        .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 1,
+        .pQueueFamilyIndices = &queueFamilyIndex};
+
+    VkBuffer materialBufferHandle = VK_NULL_HANDLE;
+    result = vkCreateBuffer(deviceHandle, &materialBufferCreateInfo, NULL,
+                            &materialBufferHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateBuffer");
+    }
+
+    VkMemoryRequirements materialMemoryRequirements;
+    vkGetBufferMemoryRequirements(deviceHandle, materialBufferHandle,
+                                    &materialMemoryRequirements);
+
+    uint32_t materialMemoryTypeIndex = -1;
+    for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
+        x++) {
+        if ((materialMemoryRequirements.memoryTypeBits & (1 << x)) &&
+            (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ==
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+
+        materialMemoryTypeIndex = x;
+        break;
+        }
+    }
+
+    VkMemoryAllocateInfo materialMemoryAllocateInfo = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .pNext = &memoryAllocateFlagsInfo,
+        .allocationSize = materialMemoryRequirements.size,
+        .memoryTypeIndex = materialMemoryTypeIndex};
+
+    VkDeviceMemory materialDeviceMemoryHandle = VK_NULL_HANDLE;
+    result = vkAllocateMemory(deviceHandle, &materialMemoryAllocateInfo, NULL,
+                                &materialDeviceMemoryHandle);
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkAllocateMemory");
+    }
+
+    result = vkBindBufferMemory(deviceHandle, materialBufferHandle,
+                                materialDeviceMemoryHandle, 0);
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkBindBufferMemory");
+    }
+
+    void *hostMaterialMemoryBuffer;
+    result = vkMapMemory(deviceHandle, materialDeviceMemoryHandle, 0,
+                        sizeof(Material) * materialList.size(), 0,
+                        &hostMaterialMemoryBuffer);
+
+    memcpy(hostMaterialMemoryBuffer, materialList.data(),
+            sizeof(Material) * materialList.size());
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkMapMemory");
+    }
+
+    vkUnmapMemory(deviceHandle, materialDeviceMemoryHandle);
+    #pragma endregion
+
+    #pragma region Update Material Descriptor Set
+    VkDescriptorBufferInfo materialIndexDescriptorInfo = {
+      .buffer = materialIndexBufferHandle, .offset = 0, .range = VK_WHOLE_SIZE};
+
+    VkDescriptorBufferInfo materialDescriptorInfo = {
+        .buffer = materialBufferHandle, .offset = 0, .range = VK_WHOLE_SIZE};
+
+    std::vector<VkWriteDescriptorSet> materialWriteDescriptorSetList = {
+        {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .pNext = NULL,
+        .dstSet = descriptorSetHandleList[1],
+        .dstBinding = 0,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .pImageInfo = NULL,
+        .pBufferInfo = &materialIndexDescriptorInfo,
+        .pTexelBufferView = NULL},
+        {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .pNext = NULL,
+        .dstSet = descriptorSetHandleList[1],
+        .dstBinding = 1,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .pImageInfo = NULL,
+        .pBufferInfo = &materialDescriptorInfo,
+        .pTexelBufferView = NULL}};
+
+    vkUpdateDescriptorSets(deviceHandle, materialWriteDescriptorSetList.size(),
+                         materialWriteDescriptorSetList.data(), 0, NULL);
+    #pragma endregion
+
+    #pragma region Shader Binding Table
+    VkDeviceSize progSize =
+        physicalDeviceRayTracingPipelineProperties.shaderGroupBaseAlignment;
+
+    VkDeviceSize shaderBindingTableSize = progSize * 4;
+
+    VkBufferCreateInfo shaderBindingTableBufferCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .size = shaderBindingTableSize,
+        .usage = VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR |
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 1,
+        .pQueueFamilyIndices = &queueFamilyIndex};
+
+    VkBuffer shaderBindingTableBufferHandle = VK_NULL_HANDLE;
+    result = vkCreateBuffer(deviceHandle, &shaderBindingTableBufferCreateInfo,
+                            NULL, &shaderBindingTableBufferHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateBuffer");
+    }
+
+    VkMemoryRequirements shaderBindingTableMemoryRequirements;
+    vkGetBufferMemoryRequirements(deviceHandle, shaderBindingTableBufferHandle,
+                                    &shaderBindingTableMemoryRequirements);
+
+    uint32_t shaderBindingTableMemoryTypeIndex = -1;
+    for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
+        x++) {
+        if ((shaderBindingTableMemoryRequirements.memoryTypeBits & (1 << x)) &&
+            (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ==
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+
+        shaderBindingTableMemoryTypeIndex = x;
+        break;
+        }
+    }
+
+    VkMemoryAllocateInfo shaderBindingTableMemoryAllocateInfo = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .pNext = &memoryAllocateFlagsInfo,
+        .allocationSize = shaderBindingTableMemoryRequirements.size,
+        .memoryTypeIndex = shaderBindingTableMemoryTypeIndex};
+
+    VkDeviceMemory shaderBindingTableDeviceMemoryHandle = VK_NULL_HANDLE;
+    result = vkAllocateMemory(deviceHandle, &shaderBindingTableMemoryAllocateInfo,
+                                NULL, &shaderBindingTableDeviceMemoryHandle);
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkAllocateMemory");
+    }
+
+    result = vkBindBufferMemory(deviceHandle, shaderBindingTableBufferHandle,
+                                shaderBindingTableDeviceMemoryHandle, 0);
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkBindBufferMemory");
+    }
+
+    char *shaderHandleBuffer = new char[shaderBindingTableSize];
+    result = pvkGetRayTracingShaderGroupHandlesKHR(
+        deviceHandle, rayTracingPipelineHandle, 0, 4, shaderBindingTableSize,
+        shaderHandleBuffer);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkGetRayTracingShaderGroupHandlesKHR");
+    }
+
+    void *hostShaderBindingTableMemoryBuffer;
+    result = vkMapMemory(deviceHandle, shaderBindingTableDeviceMemoryHandle, 0,
+                        shaderBindingTableSize, 0,
+                        &hostShaderBindingTableMemoryBuffer);
+
+    for (uint32_t x = 0; x < 4; x++) {
+        memcpy(hostShaderBindingTableMemoryBuffer,
+            shaderHandleBuffer + x * physicalDeviceRayTracingPipelineProperties
+                                            .shaderGroupHandleSize,
+            physicalDeviceRayTracingPipelineProperties.shaderGroupHandleSize);
+
+        hostShaderBindingTableMemoryBuffer =
+            reinterpret_cast<char *>(hostShaderBindingTableMemoryBuffer) +
+            physicalDeviceRayTracingPipelineProperties.shaderGroupBaseAlignment;
+    }
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkMapMemory");
+    }
+
+    vkUnmapMemory(deviceHandle, shaderBindingTableDeviceMemoryHandle);
+
+    VkBufferDeviceAddressInfo shaderBindingTableBufferDeviceAddressInfo = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+        .pNext = NULL,
+        .buffer = shaderBindingTableBufferHandle};
+
+    VkDeviceAddress shaderBindingTableBufferDeviceAddress =
+        pvkGetBufferDeviceAddressKHR(deviceHandle,
+                                    &shaderBindingTableBufferDeviceAddressInfo);
+
+    VkDeviceSize hitGroupOffset = 0u * progSize;
+    VkDeviceSize rayGenOffset = 1u * progSize;
+    VkDeviceSize missOffset = 2u * progSize;
+
+    const VkStridedDeviceAddressRegionKHR rchitShaderBindingTable = {
+        .deviceAddress = shaderBindingTableBufferDeviceAddress + hitGroupOffset,
+        .stride = progSize,
+        .size = progSize};
+
+    const VkStridedDeviceAddressRegionKHR rgenShaderBindingTable = {
+        .deviceAddress = shaderBindingTableBufferDeviceAddress + rayGenOffset,
+        .stride = progSize,
+        .size = progSize};
+
+    const VkStridedDeviceAddressRegionKHR rmissShaderBindingTable = {
+        .deviceAddress = shaderBindingTableBufferDeviceAddress + missOffset,
+        .stride = progSize,
+        .size = progSize * 2};
+
+    const VkStridedDeviceAddressRegionKHR callableShaderBindingTable = {};
+
+    #pragma endregion
+
+    #pragma region Record Render Pass Command Buffers
+    for (uint32_t x = 0; x < swapchainImageCount; x++) {
+        VkCommandBufferBeginInfo renderCommandBufferBeginInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .pNext = NULL,
+            .flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+            .pInheritanceInfo = NULL};
+
+        result = vkBeginCommandBuffer(commandBufferHandleList[x],
+                                    &renderCommandBufferBeginInfo);
+
+        if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkBeginCommandBuffer");
+        }
+
+        vkCmdBindPipeline(commandBufferHandleList[x],
+                        VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
+                        rayTracingPipelineHandle);
+
+        vkCmdBindDescriptorSets(
+            commandBufferHandleList[x], VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
+            pipelineLayoutHandle, 0, (uint32_t)descriptorSetHandleList.size(),
+            descriptorSetHandleList.data(), 0, NULL);
+
+        pvkCmdTraceRaysKHR(commandBufferHandleList[x], &rgenShaderBindingTable,
+                        &rmissShaderBindingTable, &rchitShaderBindingTable,
+                        &callableShaderBindingTable,
+                        surfaceCapabilities.currentExtent.width,
+                        surfaceCapabilities.currentExtent.height, 1);
+
+        VkImageMemoryBarrier swapchainCopyMemoryBarrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .pNext = NULL,
+            .srcAccessMask = 0,
+            .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .srcQueueFamilyIndex = queueFamilyIndex,
+            .dstQueueFamilyIndex = queueFamilyIndex,
+            .image = swapchainImageHandleList[x],
+            .subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                .baseMipLevel = 0,
+                                .levelCount = 1,
+                                .baseArrayLayer = 0,
+                                .layerCount = 1}};
+
+        vkCmdPipelineBarrier(commandBufferHandleList[x],
+                            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 0,
+                            NULL, 1, &swapchainCopyMemoryBarrier);
+
+        VkImageMemoryBarrier rayTraceCopyMemoryBarrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .pNext = NULL,
+            .srcAccessMask = 0,
+            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .srcQueueFamilyIndex = queueFamilyIndex,
+            .dstQueueFamilyIndex = queueFamilyIndex,
+            .image = rayTraceImageHandle,
+            .subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                .baseMipLevel = 0,
+                                .levelCount = 1,
+                                .baseArrayLayer = 0,
+                                .layerCount = 1}};
+
+        vkCmdPipelineBarrier(commandBufferHandleList[x],
+                            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 0,
+                            NULL, 1, &rayTraceCopyMemoryBarrier);
+
+        VkImageCopy imageCopy = {
+            .srcSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                            .mipLevel = 0,
+                            .baseArrayLayer = 0,
+                            .layerCount = 1},
+            .srcOffset = {.x = 0, .y = 0, .z = 0},
+            .dstSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                            .mipLevel = 0,
+                            .baseArrayLayer = 0,
+                            .layerCount = 1},
+            .dstOffset = {.x = 0, .y = 0, .z = 0},
+            .extent = {.width = surfaceCapabilities.currentExtent.width,
+                    .height = surfaceCapabilities.currentExtent.height,
+                    .depth = 1}};
+
+        vkCmdCopyImage(commandBufferHandleList[x], rayTraceImageHandle,
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    swapchainImageHandleList[x],
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageCopy);
+
+        VkImageMemoryBarrier swapchainPresentMemoryBarrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .pNext = NULL,
+            .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask = 0,
+            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            .srcQueueFamilyIndex = queueFamilyIndex,
+            .dstQueueFamilyIndex = queueFamilyIndex,
+            .image = swapchainImageHandleList[x],
+            .subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                .baseMipLevel = 0,
+                                .levelCount = 1,
+                                .baseArrayLayer = 0,
+                                .layerCount = 1}};
+
+        vkCmdPipelineBarrier(commandBufferHandleList[x],
+                            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 0,
+                            NULL, 1, &swapchainPresentMemoryBarrier);
+
+        VkImageMemoryBarrier rayTraceWriteMemoryBarrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .pNext = NULL,
+            .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .dstAccessMask = 0,
+            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .srcQueueFamilyIndex = queueFamilyIndex,
+            .dstQueueFamilyIndex = queueFamilyIndex,
+            .image = rayTraceImageHandle,
+            .subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                .baseMipLevel = 0,
+                                .levelCount = 1,
+                                .baseArrayLayer = 0,
+                                .layerCount = 1}};
+
+        vkCmdPipelineBarrier(commandBufferHandleList[x],
+                            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 0,
+                            NULL, 1, &rayTraceWriteMemoryBarrier);
+
+        result = vkEndCommandBuffer(commandBufferHandleList[x]);
+
+        if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkEndCommandBuffer");
+        }
+    }
+    #pragma endregion
+
+    #pragma region Fences Semaphores
+    std::vector<VkFence> imageAvailableFenceHandleList(swapchainImageCount,
+                                                        VK_NULL_HANDLE);
+
+    std::vector<VkSemaphore> acquireImageSemaphoreHandleList(swapchainImageCount,
+                                                            VK_NULL_HANDLE);
+
+    std::vector<VkSemaphore> writeImageSemaphoreHandleList(swapchainImageCount,
+                                                            VK_NULL_HANDLE);
+
+    for (uint32_t x = 0; x < swapchainImageCount; x++) {
+        VkFenceCreateInfo imageAvailableFenceCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = VK_FENCE_CREATE_SIGNALED_BIT};
+
+        result = vkCreateFence(deviceHandle, &imageAvailableFenceCreateInfo, NULL,
+                            &imageAvailableFenceHandleList[x]);
+
+        if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateFence");
+        }
+
+        VkSemaphoreCreateInfo acquireImageSemaphoreCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0};
+
+        result = vkCreateSemaphore(deviceHandle, &acquireImageSemaphoreCreateInfo,
+                                NULL, &acquireImageSemaphoreHandleList[x]);
+
+        if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateSemaphore");
+        }
+
+        VkSemaphoreCreateInfo writeImageSemaphoreCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0};
+
+        result = vkCreateSemaphore(deviceHandle, &writeImageSemaphoreCreateInfo,
+                                NULL, &writeImageSemaphoreHandleList[x]);
+
+        if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateSemaphore");
+        }
+    }
+    #pragma endregion
+
+    #pragma region Main Loop
+    uint32_t currentFrame = 0;
+    bool isMoveForward = false;
+    bool isMoveBack = true;
+    bool isTurnLeft = false;
+    bool isTurnRight = false;
+    bool running = true;
+    while (running) {
+        SDL_Event windowEvent;
+        while(SDL_PollEvent(&windowEvent))
+            if(windowEvent.type == SDL_QUIT) {
+                running = false;
+                break;
+            }
+
+        static bool isCameraMoved = true;
+        static float cameraPosition[3] = { 1.5, 4.0, 10.0 };
+        static float cameraYaw = 0.0;
+        static float cameraPitch = 0.0;
+
+        if (isMoveForward) {
+        cameraPosition[0] += cos(-cameraYaw - (3.141592 / 2)) * 0.01f;
+        cameraPosition[2] += sin(-cameraYaw - (3.141592 / 2)) * 0.01f;
+        isCameraMoved = true;
+        }
+        if (isMoveBack) {
+        cameraPosition[0] -= cos(-cameraYaw - (3.141592 / 2)) * 0.01f;
+        cameraPosition[2] -= sin(-cameraYaw - (3.141592 / 2)) * 0.01f;
+        isCameraMoved = true;
+        }
+        if (isTurnLeft) {
+        cameraYaw += 0.005f;
+        isCameraMoved = true;
+        }
+        if (isTurnRight) {
+        cameraYaw -= 0.005f;
+        isCameraMoved = true;
+        }
+
+        if (isCameraMoved) {
+        uniformStructure.cameraPosition[0] = cameraPosition[0];
+        uniformStructure.cameraPosition[1] = cameraPosition[1];
+        uniformStructure.cameraPosition[2] = cameraPosition[2];
+
+        uniformStructure.cameraForward[0] =
+            cosf(cameraPitch) * cosf(-cameraYaw - (3.141592 / 2.0));
+        uniformStructure.cameraForward[1] = sinf(cameraPitch);
+        uniformStructure.cameraForward[2] =
+            cosf(cameraPitch) * sinf(-cameraYaw - (3.141592 / 2.0));
+
+        uniformStructure.cameraRight[0] =
+            uniformStructure.cameraForward[1] * uniformStructure.cameraUp[2] -
+            uniformStructure.cameraForward[2] * uniformStructure.cameraUp[1];
+        uniformStructure.cameraRight[1] =
+            uniformStructure.cameraForward[2] * uniformStructure.cameraUp[0] -
+            uniformStructure.cameraForward[0] * uniformStructure.cameraUp[2];
+        uniformStructure.cameraRight[2] =
+            uniformStructure.cameraForward[0] * uniformStructure.cameraUp[1] -
+            uniformStructure.cameraForward[1] * uniformStructure.cameraUp[0];
+
+        uniformStructure.frameCount = 0;
+
+        isCameraMoved = false;
+        } else {
+        uniformStructure.frameCount += 1;
+        }
+
+        result = vkMapMemory(deviceHandle, uniformDeviceMemoryHandle, 0,
+                            sizeof(UniformStructure), 0, &hostUniformMemoryBuffer);
+
+        memcpy(hostUniformMemoryBuffer, &uniformStructure,
+            sizeof(UniformStructure));
+
+        if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkMapMemory");
+        }
+
+        vkUnmapMemory(deviceHandle, uniformDeviceMemoryHandle);
+
+        result = vkWaitForFences(deviceHandle, 1,
+                                &imageAvailableFenceHandleList[currentFrame], true,
+                                UINT32_MAX);
+
+        if (result != VK_SUCCESS && result != VK_TIMEOUT) {
+        throwExceptionVulkanAPI(result, "vkWaitForFences");
+        }
+
+        result = vkResetFences(deviceHandle, 1,
+                            &imageAvailableFenceHandleList[currentFrame]);
+
+        if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkResetFences");
+        }
+
+        uint32_t currentImageIndex = -1;
+        result =
+            vkAcquireNextImageKHR(deviceHandle, swapchainHandle, UINT32_MAX,
+                                acquireImageSemaphoreHandleList[currentFrame],
+                                VK_NULL_HANDLE, &currentImageIndex);
+
+        if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkAcquireNextImageKHR");
+        }
+
+        VkPipelineStageFlags pipelineStageFlags =
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+        VkSubmitInfo submitInfo = {
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pNext = NULL,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &acquireImageSemaphoreHandleList[currentFrame],
+            .pWaitDstStageMask = &pipelineStageFlags,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &commandBufferHandleList[currentFrame],
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores = &writeImageSemaphoreHandleList[currentFrame]};
+
+        result = vkQueueSubmit(queueHandle, 1, &submitInfo,
+                            imageAvailableFenceHandleList[currentFrame]);
+
+        if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkQueueSubmit");
+        }
+
+        VkPresentInfoKHR presentInfo = {
+            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .pNext = NULL,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &writeImageSemaphoreHandleList[currentFrame],
+            .swapchainCount = 1,
+            .pSwapchains = &swapchainHandle,
+            .pImageIndices = &currentImageIndex,
+            .pResults = NULL};
+
+        result = vkQueuePresentKHR(queueHandle, &presentInfo);
+
+        if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkQueuePresentKHR");
+        }
+
+        currentFrame = (currentFrame + 1) % swapchainImageCount;
+    }
+    #pragma endregion
 }
 #endif
