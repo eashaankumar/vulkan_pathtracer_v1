@@ -21,6 +21,21 @@
 #define STRING_WARNING "\033[33m"
 #define STRING_ERROR "\033[36m"
 
+struct Vertex
+{
+public:
+    float x, y, z;
+};
+
+Vertex CreateVertex(float _x, float _y, float _z)
+{
+    Vertex v;
+    v.x = _x;
+    v.y = _y;
+    v.z = _z;
+    return v;
+}
+
 VkBool32
 debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
               VkDebugUtilsMessageTypeFlagsEXT messageTypes,
@@ -781,6 +796,281 @@ RendererRT::RendererRT()
         throwExceptionVulkanAPI(result, "vkCreateShaderModule");
     }
 
+    #pragma endregion
+
+    #pragma region Raytracing Pipeline
+    std::vector<VkPipelineShaderStageCreateInfo>
+      pipelineShaderStageCreateInfoList = {
+          {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+           .pNext = NULL,
+           .flags = 0,
+           .stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+           .module = rayClosestHitShaderModuleHandle,
+           .pName = "main",
+           .pSpecializationInfo = NULL},
+          {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+           .pNext = NULL,
+           .flags = 0,
+           .stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
+           .module = rayGenerateShaderModuleHandle,
+           .pName = "main",
+           .pSpecializationInfo = NULL},
+          {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+           .pNext = NULL,
+           .flags = 0,
+           .stage = VK_SHADER_STAGE_MISS_BIT_KHR,
+           .module = rayMissShaderModuleHandle,
+           .pName = "main",
+           .pSpecializationInfo = NULL},
+          {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+           .pNext = NULL,
+           .flags = 0,
+           .stage = VK_SHADER_STAGE_MISS_BIT_KHR,
+           .module = rayMissShadowShaderModuleHandle,
+           .pName = "main",
+           .pSpecializationInfo = NULL}};
+
+    std::vector<VkRayTracingShaderGroupCreateInfoKHR>
+      rayTracingShaderGroupCreateInfoList = {
+          {.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
+           .pNext = NULL,
+           .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR,
+           .generalShader = VK_SHADER_UNUSED_KHR,
+           .closestHitShader = 0,
+           .anyHitShader = VK_SHADER_UNUSED_KHR,
+           .intersectionShader = VK_SHADER_UNUSED_KHR,
+           .pShaderGroupCaptureReplayHandle = NULL},
+          {.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
+           .pNext = NULL,
+           .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
+           .generalShader = 1,
+           .closestHitShader = VK_SHADER_UNUSED_KHR,
+           .anyHitShader = VK_SHADER_UNUSED_KHR,
+           .intersectionShader = VK_SHADER_UNUSED_KHR,
+           .pShaderGroupCaptureReplayHandle = NULL},
+          {.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
+           .pNext = NULL,
+           .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
+           .generalShader = 2,
+           .closestHitShader = VK_SHADER_UNUSED_KHR,
+           .anyHitShader = VK_SHADER_UNUSED_KHR,
+           .intersectionShader = VK_SHADER_UNUSED_KHR,
+           .pShaderGroupCaptureReplayHandle = NULL},
+          {.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
+           .pNext = NULL,
+           .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
+           .generalShader = 3,
+           .closestHitShader = VK_SHADER_UNUSED_KHR,
+           .anyHitShader = VK_SHADER_UNUSED_KHR,
+           .intersectionShader = VK_SHADER_UNUSED_KHR,
+           .pShaderGroupCaptureReplayHandle = NULL}};
+    
+    VkRayTracingPipelineCreateInfoKHR rayTracingPipelineCreateInfo = {
+      .sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR,
+      .pNext = NULL,
+      .flags = 0,
+      .stageCount = 4,
+      .pStages = pipelineShaderStageCreateInfoList.data(),
+      .groupCount = 4,
+      .pGroups = rayTracingShaderGroupCreateInfoList.data(),
+      .maxPipelineRayRecursionDepth = 1,
+      .pLibraryInfo = NULL,
+      .pLibraryInterface = NULL,
+      .pDynamicState = NULL,
+      .layout = pipelineLayoutHandle,
+      .basePipelineHandle = VK_NULL_HANDLE,
+      .basePipelineIndex = 0};
+
+    VkPipeline rayTracingPipelineHandle = VK_NULL_HANDLE;
+    result = pvkCreateRayTracingPipelinesKHR(
+        deviceHandle, VK_NULL_HANDLE, VK_NULL_HANDLE, 1,
+        &rayTracingPipelineCreateInfo, NULL, &rayTracingPipelineHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateRayTracingPipelinesKHR");
+    }
+    #pragma endregion
+
+    #pragma region Vertices
+    std::vector<uint32_t> indexList;
+    std::vector<Vertex> vertices;
+
+    vertices.push_back(CreateVertex(-1, -1, 0));
+    vertices.push_back(CreateVertex(1, -1, 0));
+    vertices.push_back(CreateVertex(1, 1, 0));
+    vertices.push_back(CreateVertex(-1, 1, 0));
+
+    indexList.push_back(0);
+    indexList.push_back(1);
+    indexList.push_back(2);
+
+    indexList.push_back(2);
+    indexList.push_back(3);
+    indexList.push_back(0);
+
+    #pragma endregion
+
+    #pragma region Vertex Buffer
+    VkBufferCreateInfo vertexBufferCreateInfo = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+      .pNext = NULL,
+      .flags = 0,
+      .size = sizeof(float) * vertices.size() * 3,
+      .usage =
+          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+          VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+      .queueFamilyIndexCount = 1,
+      .pQueueFamilyIndices = &queueFamilyIndex};
+
+    VkBuffer vertexBufferHandle = VK_NULL_HANDLE;
+    result = vkCreateBuffer(deviceHandle, &vertexBufferCreateInfo, NULL,
+                          &vertexBufferHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateBuffer");
+    }
+
+    VkMemoryRequirements vertexMemoryRequirements;
+    vkGetBufferMemoryRequirements(deviceHandle, vertexBufferHandle,
+                                &vertexMemoryRequirements);
+
+    uint32_t vertexMemoryTypeIndex = -1;
+    for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount; x++) {
+    if ((vertexMemoryRequirements.memoryTypeBits & (1 << x)) &&
+        (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
+         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ==
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+
+            vertexMemoryTypeIndex = x;
+            break;
+        }
+    }
+
+    VkMemoryAllocateInfo vertexMemoryAllocateInfo = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+      .pNext = &memoryAllocateFlagsInfo,
+      .allocationSize = vertexMemoryRequirements.size,
+      .memoryTypeIndex = vertexMemoryTypeIndex};
+
+    VkDeviceMemory vertexDeviceMemoryHandle = VK_NULL_HANDLE;
+    result = vkAllocateMemory(deviceHandle, &vertexMemoryAllocateInfo, NULL,
+                            &vertexDeviceMemoryHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkAllocateMemory");
+    }
+
+    result = vkBindBufferMemory(deviceHandle, vertexBufferHandle,
+                                vertexDeviceMemoryHandle, 0);
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkBindBufferMemory");
+    }
+
+    void *hostVertexMemoryBuffer;
+    result = vkMapMemory(deviceHandle, vertexDeviceMemoryHandle, 0,
+                        sizeof(float) * vertices.size() * 3, 0,
+                        &hostVertexMemoryBuffer);
+
+    memcpy(hostVertexMemoryBuffer, vertices.data(),
+            sizeof(float) * vertices.size() * 3);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkMapMemory");
+    }
+
+    vkUnmapMemory(deviceHandle, vertexDeviceMemoryHandle);
+
+    VkBufferDeviceAddressInfo vertexBufferDeviceAddressInfo = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+        .pNext = NULL,
+        .buffer = vertexBufferHandle};
+
+    VkDeviceAddress vertexBufferDeviceAddress = pvkGetBufferDeviceAddressKHR(
+        deviceHandle, &vertexBufferDeviceAddressInfo);
+
+    #pragma endregion
+
+    #pragma region Index Buffer
+    VkBufferCreateInfo indexBufferCreateInfo = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+      .pNext = NULL,
+      .flags = 0,
+      .size = sizeof(uint32_t) * indexList.size(),
+      .usage =
+          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+          VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+      .queueFamilyIndexCount = 1,
+      .pQueueFamilyIndices = &queueFamilyIndex};
+
+    VkBuffer indexBufferHandle = VK_NULL_HANDLE;
+    result = vkCreateBuffer(deviceHandle, &indexBufferCreateInfo, NULL,
+                            &indexBufferHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateBuffer");
+    }
+
+    VkMemoryRequirements indexMemoryRequirements;
+    vkGetBufferMemoryRequirements(deviceHandle, indexBufferHandle,
+                                    &indexMemoryRequirements);
+
+    uint32_t indexMemoryTypeIndex = -1;
+    for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
+        x++) {
+        if ((indexMemoryRequirements.memoryTypeBits & (1 << x)) &&
+            (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ==
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+
+        indexMemoryTypeIndex = x;
+        break;
+        }
+    }
+
+    VkMemoryAllocateInfo indexMemoryAllocateInfo = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .pNext = &memoryAllocateFlagsInfo,
+        .allocationSize = indexMemoryRequirements.size,
+        .memoryTypeIndex = indexMemoryTypeIndex};
+
+    VkDeviceMemory indexDeviceMemoryHandle = VK_NULL_HANDLE;
+    result = vkAllocateMemory(deviceHandle, &indexMemoryAllocateInfo, NULL,
+                                &indexDeviceMemoryHandle);
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkAllocateMemory");
+    }
+
+    result = vkBindBufferMemory(deviceHandle, indexBufferHandle,
+                                indexDeviceMemoryHandle, 0);
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkBindBufferMemory");
+    }
+
+    void *hostIndexMemoryBuffer;
+    result = vkMapMemory(deviceHandle, indexDeviceMemoryHandle, 0,
+                        sizeof(uint32_t) * indexList.size(), 0,
+                        &hostIndexMemoryBuffer);
+
+    memcpy(hostIndexMemoryBuffer, indexList.data(),
+            sizeof(uint32_t) * indexList.size());
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkMapMemory");
+    }
+
+    vkUnmapMemory(deviceHandle, indexDeviceMemoryHandle);
+
+    VkBufferDeviceAddressInfo indexBufferDeviceAddressInfo = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+        .pNext = NULL,
+        .buffer = indexBufferHandle};
+
+    VkDeviceAddress indexBufferDeviceAddress =
+        pvkGetBufferDeviceAddressKHR(deviceHandle, &indexBufferDeviceAddressInfo);
     #pragma endregion
 
     #pragma endregion
