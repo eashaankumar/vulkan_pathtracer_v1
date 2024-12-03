@@ -892,6 +892,7 @@ RendererRT::RendererRT()
     #pragma endregion
 
     #pragma region Vertices
+    uint32_t primitiveCount = 0;
     std::vector<uint32_t> indexList;
     std::vector<Vertex> vertices;
 
@@ -907,6 +908,8 @@ RendererRT::RendererRT()
     indexList.push_back(2);
     indexList.push_back(3);
     indexList.push_back(0);
+
+    primitiveCount = 2;
 
     #pragma endregion
 
@@ -1071,6 +1074,325 @@ RendererRT::RendererRT()
 
     VkDeviceAddress indexBufferDeviceAddress =
         pvkGetBufferDeviceAddressKHR(deviceHandle, &indexBufferDeviceAddressInfo);
+    #pragma endregion
+
+    #pragma region Bottom Level Acceleration Structure
+    VkAccelerationStructureGeometryDataKHR
+      bottomLevelAccelerationStructureGeometryData = {
+          .triangles = {
+              .sType =
+                  VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
+              .pNext = NULL,
+              .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
+              .vertexData = {.deviceAddress = vertexBufferDeviceAddress},
+              .vertexStride = sizeof(float) * 3,
+              .maxVertex = (uint32_t)vertices.size(),
+              .indexType = VK_INDEX_TYPE_UINT32,
+              .indexData = {.deviceAddress = indexBufferDeviceAddress},
+              .transformData = {.deviceAddress = 0}}};
+
+    VkAccelerationStructureGeometryKHR bottomLevelAccelerationStructureGeometry =
+        {.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
+        .pNext = NULL,
+        .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
+        .geometry = bottomLevelAccelerationStructureGeometryData,
+        .flags = VK_GEOMETRY_OPAQUE_BIT_KHR};
+
+    VkAccelerationStructureBuildGeometryInfoKHR
+        bottomLevelAccelerationStructureBuildGeometryInfo = {
+            .sType =
+                VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
+            .pNext = NULL,
+            .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
+            .flags = 0,
+            .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
+            .srcAccelerationStructure = VK_NULL_HANDLE,
+            .dstAccelerationStructure = VK_NULL_HANDLE,
+            .geometryCount = 1,
+            .pGeometries = &bottomLevelAccelerationStructureGeometry,
+            .ppGeometries = NULL,
+            .scratchData = {.deviceAddress = 0}};
+
+    VkAccelerationStructureBuildSizesInfoKHR
+        bottomLevelAccelerationStructureBuildSizesInfo = {
+            .sType =
+                VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR,
+            .pNext = NULL,
+            .accelerationStructureSize = 0,
+            .updateScratchSize = 0,
+            .buildScratchSize = 0};
+
+    std::vector<uint32_t> bottomLevelMaxPrimitiveCountList = {primitiveCount};
+
+    pvkGetAccelerationStructureBuildSizesKHR(
+        deviceHandle, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+        &bottomLevelAccelerationStructureBuildGeometryInfo,
+        bottomLevelMaxPrimitiveCountList.data(),
+        &bottomLevelAccelerationStructureBuildSizesInfo);
+
+    VkBufferCreateInfo bottomLevelAccelerationStructureBufferCreateInfo = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+      .pNext = NULL,
+      .flags = 0,
+      .size = bottomLevelAccelerationStructureBuildSizesInfo
+                  .accelerationStructureSize,
+      .usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | 
+      VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+      .queueFamilyIndexCount = 1,
+      .pQueueFamilyIndices = &queueFamilyIndex};
+
+    VkBuffer bottomLevelAccelerationStructureBufferHandle = VK_NULL_HANDLE;
+    result = vkCreateBuffer(deviceHandle,
+                            &bottomLevelAccelerationStructureBufferCreateInfo,
+                            NULL, &bottomLevelAccelerationStructureBufferHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateBuffer");
+    }
+
+    VkMemoryRequirements bottomLevelAccelerationStructureMemoryRequirements;
+    vkGetBufferMemoryRequirements(
+        deviceHandle, bottomLevelAccelerationStructureBufferHandle,
+        &bottomLevelAccelerationStructureMemoryRequirements);
+
+    uint32_t bottomLevelAccelerationStructureMemoryTypeIndex = -1;
+    for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
+        x++) {
+
+        if ((bottomLevelAccelerationStructureMemoryRequirements.memoryTypeBits &
+            (1 << x)) &&
+            (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) ==
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
+
+        bottomLevelAccelerationStructureMemoryTypeIndex = x;
+        break;
+        }
+    }
+
+    VkMemoryAllocateInfo bottomLevelAccelerationStructureMemoryAllocateInfo = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .pNext = &memoryAllocateFlagsInfo,
+        .allocationSize = bottomLevelAccelerationStructureMemoryRequirements.size,
+        .memoryTypeIndex = bottomLevelAccelerationStructureMemoryTypeIndex};
+
+    VkDeviceMemory bottomLevelAccelerationStructureDeviceMemoryHandle =
+        VK_NULL_HANDLE;
+
+    result = vkAllocateMemory(
+        deviceHandle, &bottomLevelAccelerationStructureMemoryAllocateInfo, NULL,
+        &bottomLevelAccelerationStructureDeviceMemoryHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkAllocateMemory");
+    }
+
+    result = vkBindBufferMemory(
+        deviceHandle, bottomLevelAccelerationStructureBufferHandle,
+        bottomLevelAccelerationStructureDeviceMemoryHandle, 0);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkBindBufferMemory");
+    }
+
+    VkAccelerationStructureCreateInfoKHR
+        bottomLevelAccelerationStructureCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
+            .pNext = NULL,
+            .createFlags = 0,
+            .buffer = bottomLevelAccelerationStructureBufferHandle,
+            .offset = 0,
+            .size = bottomLevelAccelerationStructureBuildSizesInfo
+                        .accelerationStructureSize,
+            .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
+            .deviceAddress = 0};
+
+    VkAccelerationStructureKHR bottomLevelAccelerationStructureHandle =
+        VK_NULL_HANDLE;
+
+    result = pvkCreateAccelerationStructureKHR(
+        deviceHandle, &bottomLevelAccelerationStructureCreateInfo, NULL,
+        &bottomLevelAccelerationStructureHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateAccelerationStructureKHR");
+    }
+    #pragma endregion
+
+    #pragma region Build Bottom Level Acceleration Struction
+    VkAccelerationStructureDeviceAddressInfoKHR
+      bottomLevelAccelerationStructureDeviceAddressInfo = {
+          .sType =
+              VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR,
+          .pNext = NULL,
+          .accelerationStructure = bottomLevelAccelerationStructureHandle};
+
+    VkDeviceAddress bottomLevelAccelerationStructureDeviceAddress =
+        pvkGetAccelerationStructureDeviceAddressKHR(
+            deviceHandle, &bottomLevelAccelerationStructureDeviceAddressInfo);
+
+    VkBufferCreateInfo bottomLevelAccelerationStructureScratchBufferCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .size = bottomLevelAccelerationStructureBuildSizesInfo.buildScratchSize,
+        .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 1,
+        .pQueueFamilyIndices = &queueFamilyIndex};
+
+    VkBuffer bottomLevelAccelerationStructureScratchBufferHandle = VK_NULL_HANDLE;
+    result = vkCreateBuffer(
+        deviceHandle, &bottomLevelAccelerationStructureScratchBufferCreateInfo,
+        NULL, &bottomLevelAccelerationStructureScratchBufferHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateBuffer");
+    }
+
+    VkMemoryRequirements
+        bottomLevelAccelerationStructureScratchMemoryRequirements;
+    vkGetBufferMemoryRequirements(
+        deviceHandle, bottomLevelAccelerationStructureScratchBufferHandle,
+        &bottomLevelAccelerationStructureScratchMemoryRequirements);
+
+    uint32_t bottomLevelAccelerationStructureScratchMemoryTypeIndex = -1;
+    for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
+        x++) {
+
+        if ((bottomLevelAccelerationStructureScratchMemoryRequirements
+                .memoryTypeBits &
+            (1 << x)) &&
+            (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) ==
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
+
+        bottomLevelAccelerationStructureScratchMemoryTypeIndex = x;
+        break;
+        }
+    }
+
+    VkMemoryAllocateInfo
+        bottomLevelAccelerationStructureScratchMemoryAllocateInfo = {
+            .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+            .pNext = &memoryAllocateFlagsInfo,
+            .allocationSize =
+                bottomLevelAccelerationStructureScratchMemoryRequirements.size,
+            .memoryTypeIndex =
+                bottomLevelAccelerationStructureScratchMemoryTypeIndex};
+
+    VkDeviceMemory bottomLevelAccelerationStructureDeviceScratchMemoryHandle =
+        VK_NULL_HANDLE;
+
+    result = vkAllocateMemory(
+        deviceHandle, &bottomLevelAccelerationStructureScratchMemoryAllocateInfo,
+        NULL, &bottomLevelAccelerationStructureDeviceScratchMemoryHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkAllocateMemory");
+    }
+
+    result = vkBindBufferMemory(
+        deviceHandle, bottomLevelAccelerationStructureScratchBufferHandle,
+        bottomLevelAccelerationStructureDeviceScratchMemoryHandle, 0);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkBindBufferMemory");
+    }
+
+    VkBufferDeviceAddressInfo
+        bottomLevelAccelerationStructureScratchBufferDeviceAddressInfo = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+            .pNext = NULL,
+            .buffer = bottomLevelAccelerationStructureScratchBufferHandle};
+
+    VkDeviceAddress bottomLevelAccelerationStructureScratchBufferDeviceAddress =
+        pvkGetBufferDeviceAddressKHR(
+            deviceHandle,
+            &bottomLevelAccelerationStructureScratchBufferDeviceAddressInfo);
+
+    bottomLevelAccelerationStructureBuildGeometryInfo.dstAccelerationStructure =
+        bottomLevelAccelerationStructureHandle;
+
+    bottomLevelAccelerationStructureBuildGeometryInfo.scratchData = {
+        .deviceAddress =
+            bottomLevelAccelerationStructureScratchBufferDeviceAddress};
+
+    VkAccelerationStructureBuildRangeInfoKHR
+        bottomLevelAccelerationStructureBuildRangeInfo = {.primitiveCount =
+                                                                primitiveCount,
+                                                            .primitiveOffset = 0,
+                                                            .firstVertex = 0,
+                                                            .transformOffset = 0};
+
+    const VkAccelerationStructureBuildRangeInfoKHR
+        *bottomLevelAccelerationStructureBuildRangeInfos =
+            &bottomLevelAccelerationStructureBuildRangeInfo;
+
+    VkCommandBufferBeginInfo bottomLevelCommandBufferBeginInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .pNext = NULL,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        .pInheritanceInfo = NULL};
+
+    result = vkBeginCommandBuffer(commandBufferHandleList.back(),
+                                    &bottomLevelCommandBufferBeginInfo);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkBeginCommandBuffer");
+    }
+
+    pvkCmdBuildAccelerationStructuresKHR(
+        commandBufferHandleList.back(), 1,
+        &bottomLevelAccelerationStructureBuildGeometryInfo,
+        &bottomLevelAccelerationStructureBuildRangeInfos);
+
+    result = vkEndCommandBuffer(commandBufferHandleList.back());
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkEndCommandBuffer");
+    }
+
+    VkSubmitInfo bottomLevelAccelerationStructureBuildSubmitInfo = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .pNext = NULL,
+        .waitSemaphoreCount = 0,
+        .pWaitSemaphores = NULL,
+        .pWaitDstStageMask = NULL,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &commandBufferHandleList.back(),
+        .signalSemaphoreCount = 0,
+        .pSignalSemaphores = NULL};
+
+    VkFenceCreateInfo bottomLevelAccelerationStructureBuildFenceCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .pNext = NULL, .flags = 0};
+
+    VkFence bottomLevelAccelerationStructureBuildFenceHandle = VK_NULL_HANDLE;
+    result = vkCreateFence(
+        deviceHandle, &bottomLevelAccelerationStructureBuildFenceCreateInfo, NULL,
+        &bottomLevelAccelerationStructureBuildFenceHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkCreateFence");
+    }
+
+    result = vkQueueSubmit(queueHandle, 1,
+                            &bottomLevelAccelerationStructureBuildSubmitInfo,
+                            bottomLevelAccelerationStructureBuildFenceHandle);
+
+    if (result != VK_SUCCESS) {
+        throwExceptionVulkanAPI(result, "vkQueueSubmit");
+    }
+
+    result = vkWaitForFences(deviceHandle, 1,
+                            &bottomLevelAccelerationStructureBuildFenceHandle,
+                            true, UINT32_MAX);
+
+    if (result != VK_SUCCESS && result != VK_TIMEOUT) {
+        throwExceptionVulkanAPI(result, "vkWaitForFences");
+    }
     #pragma endregion
 
     #pragma endregion
