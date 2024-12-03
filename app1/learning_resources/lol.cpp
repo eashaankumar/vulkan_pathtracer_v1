@@ -2964,3 +2964,9 @@ int main() {
 
   return 0;
 }
+
+VkMemoryAllocateInfo indexMemoryAllocateInfo = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .pNext = &memoryAllocateFlagsInfo,
+        .allocationSize = indexMemoryRequirements.size,
+        .memoryTypeIndex = indexMemoryTypeIndex};
