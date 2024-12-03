@@ -2680,7 +2680,7 @@ RendererRT::RendererRT()
             }
 
         static bool isCameraMoved = true;
-        static float cameraPosition[3] = { 1.5, 4.0, 10.0 };
+        static float cameraPosition[3] = { 1.5, 4.0, -10.0 };
         static float cameraYaw = 0.0;
         static float cameraPitch = 0.0;
 
@@ -2786,7 +2786,7 @@ RendererRT::RendererRT()
                             imageAvailableFenceHandleList[currentFrame]);
 
         if (result != VK_SUCCESS) {
-        throwExceptionVulkanAPI(result, "vkQueueSubmit");
+            throwExceptionVulkanAPI(result, "vkQueueSubmit");
         }
 
         VkPresentInfoKHR presentInfo = {
@@ -2802,7 +2802,7 @@ RendererRT::RendererRT()
         result = vkQueuePresentKHR(queueHandle, &presentInfo);
 
         if (result != VK_SUCCESS) {
-        throwExceptionVulkanAPI(result, "vkQueuePresentKHR");
+            throwExceptionVulkanAPI(result, "vkQueuePresentKHR");
         }
 
         currentFrame = (currentFrame + 1) % swapchainImageCount;
