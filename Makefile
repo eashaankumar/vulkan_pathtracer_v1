@@ -5,13 +5,13 @@ APP = app1
 
 SRCS =  ${APP}/src/*.cpp
 
-LIBSDIR = -LC:\VulkanSDK\1.3.290.0\Lib
+LIBSDIR = -LC:\VulkanSDK\1.3.290.0\Lib -LC:\Users\seana\dev\OpenGLLibs\Libs
 
 ######
 # SDL2main must come before SDL2
 ######
-LIBS = -lvulkan-1 -lSDL2main -lSDL2
-HEADERS = -IC:\VulkanSDK\1.3.290.0\Include -I${APP}/headers
+LIBS = -lvulkan-1 -lSDL2main -lSDL2 #-lglfw3
+HEADERS = -IC:\VulkanSDK\1.3.290.0\Include -I${APP}/headers -IC:\Users\seana\dev\OpenGLLibs\Include
 
 
 # OBJS = ${SRCS:.cpp=.o}

@@ -4,7 +4,8 @@
             "name": "Win32",
             "includePath": [
                 "${workspaceFolder}/app*/**",
-                "C:\\VulkanSDK\\1.3.290.0\\Include"
+                "C:\\VulkanSDK\\1.3.290.0\\Include",
+                "C:\\Users\\seana\\dev\\OpenGLLibs\\Include"
             ],
             "defines": [
                 "_DEBUG",
