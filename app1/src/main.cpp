@@ -1,10 +1,12 @@
 #include <iostream>
-#include "renderer_rt.hpp"
+#include "renderer_rt_minimal_v1.hpp"
 #include "renderer_raster.hpp"
+#include "kenwright_1_2.hpp"
 
 // # argv and char** necessary for SDL_main error to go away
 int main(int argv, char** args){
-    RendererRT renderer;
+    // RendererRT renderer;
     // RendererRaster rendererRaster;
-    return 0;
+    Kenwright_1_2 ken12;
+    return ken12.run();
 }

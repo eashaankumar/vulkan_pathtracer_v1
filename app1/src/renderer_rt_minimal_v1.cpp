@@ -1,4 +1,4 @@
-#include "renderer_rt.hpp"
+#include "renderer_rt_minimal_v1.hpp"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
 #include <vulkan/vulkan_core.h>
@@ -11,7 +11,7 @@
 #include <math.h>
 // #include <vulkan/vulkan_win32.h>
 
-#ifdef RENDERER_RT
+#ifdef RENDERER_RT_minimal_v1
 #define VALIDATION_ENABLED
 #define PLATFORM_WINDOWS
 #define APP_NAME "vulkan raytracing learning"
@@ -2624,8 +2624,11 @@ RendererRT::RendererRT()
 
     std::vector<VkSemaphore> writeImageSemaphoreHandleList(swapchainImageCount,
                                                             VK_NULL_HANDLE);
+    
+    
 
     for (uint32_t x = 0; x < swapchainImageCount; x++) {
+
         VkFenceCreateInfo imageAvailableFenceCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
             .pNext = NULL,
@@ -2768,8 +2771,37 @@ RendererRT::RendererRT()
         throwExceptionVulkanAPI(result, "vkAcquireNextImageKHR");
         }
 
+        // TODO: Image barrier
+        // VkImageMemoryBarrier swapchainPresentMemoryBarrier = {
+        //     .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        //     .pNext = NULL,
+        //     .srcAccessMask = 0,
+        //     .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+        //     .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        //     .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        //     .srcQueueFamilyIndex = queueFamilyIndex,
+        //     .dstQueueFamilyIndex = queueFamilyIndex,
+        //     .image = swapchainImageHandleList[currentFrame],
+        //     .subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        //                         .baseMipLevel = 0,
+        //                         .levelCount = 1,
+        //                         .baseArrayLayer = 0,
+        //                         .layerCount = 1}};
+        
+        // vkCmdPipelineBarrier(commandBufferHandleList[currentFrame],
+        //                     VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+        //                     VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 0,
+        //                     NULL, 1, &swapchainPresentMemoryBarrier);
+
+        // result = vkEndCommandBuffer(commandBufferHandleList.back());
+
+        // if (result != VK_SUCCESS) {
+        //     throwExceptionVulkanAPI(result, "vkEndCommandBuffer");
+        // }
+
+
         VkPipelineStageFlags pipelineStageFlags =
-            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ;
 
         VkSubmitInfo submitInfo = {
             .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -2782,6 +2814,7 @@ RendererRT::RendererRT()
             .signalSemaphoreCount = 1,
             .pSignalSemaphores = &writeImageSemaphoreHandleList[currentFrame]};
 
+        
         result = vkQueueSubmit(queueHandle, 1, &submitInfo,
                             imageAvailableFenceHandleList[currentFrame]);
 
