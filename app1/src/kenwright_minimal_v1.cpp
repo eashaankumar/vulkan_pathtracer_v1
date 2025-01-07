@@ -118,6 +118,52 @@ void main()
 
 #pragma endregion
 
+auto getDeviceProperties = [](const vk::PhysicalDevice& physicalDevice)
+{
+    vk::PhysicalDeviceProperties deviceProperties = physicalDevice.getProperties();
+    return deviceProperties;
+};
+
+auto getRayTracingFeatures = [](const vk::PhysicalDevice& physicalDevice)
+{
+    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingFeatures = {};
+    vk::PhysicalDeviceFeatures2 physicalDeviceFeatures2 = {.pNext=&rayTracingFeatures};
+    physicalDevice.getFeatures2(&physicalDeviceFeatures2);
+    return rayTracingFeatures;
+};
+
+auto getRayTracingProperties = [](const vk::PhysicalDevice& physicalDevice)
+{
+    vk::PhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingPipelinePropertiesKhr = {};
+    vk::PhysicalDeviceProperties2 phyiscalDeviceProperties2 = {.pNext=&rayTracingPipelinePropertiesKhr};
+    physicalDevice.getProperties2(&phyiscalDeviceProperties2);
+    return rayTracingPipelinePropertiesKhr;
+};
+
+auto getAccStructureFeatures = [](const vk::PhysicalDevice& physicalDevice)
+{
+    vk::PhysicalDeviceAccelerationStructureFeaturesKHR accStructureFeatures = {};
+    vk::PhysicalDeviceFeatures2 physicalDeviceFeatures2 = {.pNext=&accStructureFeatures};
+    physicalDevice.getFeatures2(&physicalDeviceFeatures2);
+    return accStructureFeatures;
+};
+
+auto getAccStructureProperties = [](const vk::PhysicalDevice& physicalDevice)
+{
+    vk::PhysicalDeviceAccelerationStructurePropertiesKHR accStructureProperties = {};
+    vk::PhysicalDeviceProperties2 physicalDeviceProperties2 = {.pNext=&accStructureProperties};
+    physicalDevice.getProperties2(&physicalDeviceProperties2);
+    return accStructureProperties;
+};
+
+auto getRayQueryFeatures = [](const vk::PhysicalDevice& physicalDevice)
+{
+    vk::PhysicalDeviceRayQueryFeaturesKHR accRayQueryFeatures = {};
+    vk::PhysicalDeviceFeatures2 physicalDeviceFeatures2 = {.pNext=&accRayQueryFeatures};
+    physicalDevice.getFeatures2(&physicalDeviceFeatures2);
+    return accRayQueryFeatures;
+};
+
 int KenWrightMinimal_V1::run()
 {
     // Init vulkan app info
@@ -157,6 +203,48 @@ int KenWrightMinimal_V1::run()
     std::vector<vk::PhysicalDevice> physicalDevices = instance.enumeratePhysicalDevices();
 
     std::cout << "Number of devices: " << physicalDevices.size() << std::endl;
+
+    const std::vector<const char*> requiredDeviceExtensions = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+        VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+        VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+        VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
+        VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
+        VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+        VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+        VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
+        VK_KHR_MAINTENANCE3_EXTENSION_NAME
+    };
+
+    // select physical device
+    vk::PhysicalDevice physicalDevice = nullptr;
+    for(const vk::PhysicalDevice& d : physicalDevices)
+    {
+        std::vector<vk::ExtensionProperties> availableExtensions = d.enumerateDeviceExtensionProperties();
+        std::set<std::string> requiredExtensions(requiredDeviceExtensions.begin(), requiredDeviceExtensions.end());
+
+        for(const vk::ExtensionProperties& extension : availableExtensions)
+        {
+            requiredExtensions.erase(extension.extensionName);
+        }
+
+        if (requiredExtensions.empty())
+        {
+            physicalDevice=d;
+            break;
+        }
+    }
+
+    std::cout << "Selected Device: " << getDeviceProperties(physicalDevice).deviceName << std::endl;
+    
+    std::cout << "Ray tracing supported:" << getRayTracingFeatures(physicalDevice).rayTracingPipeline << std::endl;
+    std::cout << "Max Rec. Depth:" << getRayTracingProperties(physicalDevice).maxRayRecursionDepth << std::endl;
+
+    std::cout << "Has Acceleration Structure: " << getAccStructureFeatures(physicalDevice).accelerationStructure << std::endl;
+    std::cout << "Has Prim Count: " << getAccStructureProperties(physicalDevice).maxGeometryCount << std::endl;
+
+    std::cout << "Has Ray Query: " << getRayQueryFeatures(physicalDevice).rayQuery << std::endl;
+
 
     instance.destroy();
     return 0;
