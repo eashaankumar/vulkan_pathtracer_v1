@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++23 -Wall -pedantic-errors -g
+CXXFLAGS = -std=c++23 -Wall -pedantic-errors -g -Wno-unknown-pragmas 
 
 APP = app1
 
@@ -42,6 +42,7 @@ app: ${APP}/src/*.cpp
 	-L/usr/local/lib -Lstdlib ${LIBSDIR} ${LIBS} \
 	-o ${APP}
 
+# example make compile_shader_spv input=app1/src/shader.rgen output=compiled_shaders/shader.rgen.spv
 compile_shader_spv: 
 	echo Input: ${input}
 	echo Output: ${output}
