@@ -10,7 +10,8 @@ LIBSDIR = -LC:\VulkanSDK\1.3.290.0\Lib -LC:\Users\seana\dev\OpenGLLibs\Libs
 ######
 # SDL2main must come before SDL2
 ######
-LIBS = -lvulkan-1 -lSDL2main -lSDL2 #-lglfw3
+VULKAN_SHADER_LIBS = -lshadercd -lshaderc_utild -lshaderc_combinedd
+LIBS = -lvulkan-1 -lSDL2main -lSDL2 #${VULKAN_SHADER_LIBS} #-lglfw3
 HEADERS = -IC:\VulkanSDK\1.3.290.0\Include -I${APP}/headers -IC:\Users\seana\dev\OpenGLLibs\Include
 
 
