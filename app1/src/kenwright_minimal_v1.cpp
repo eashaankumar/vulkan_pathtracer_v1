@@ -125,55 +125,54 @@ void main()
 
 #pragma endregion
 
-auto getDeviceProperties = [](const vk::PhysicalDevice& physicalDevice)
-{
-    vk::PhysicalDeviceProperties deviceProperties = physicalDevice.getProperties();
-    return deviceProperties;
-};
-
-auto getRayTracingFeatures = [](const vk::PhysicalDevice& physicalDevice)
-{
-    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingFeatures = {};
-    vk::PhysicalDeviceFeatures2 physicalDeviceFeatures2 = {.pNext=&rayTracingFeatures};
-    physicalDevice.getFeatures2(&physicalDeviceFeatures2);
-    return rayTracingFeatures;
-};
-
-auto getRayTracingProperties = [](const vk::PhysicalDevice& physicalDevice)
-{
-    vk::PhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingPipelinePropertiesKhr = {};
-    vk::PhysicalDeviceProperties2 phyiscalDeviceProperties2 = {.pNext=&rayTracingPipelinePropertiesKhr};
-    physicalDevice.getProperties2(&phyiscalDeviceProperties2);
-    return rayTracingPipelinePropertiesKhr;
-};
-
-auto getAccStructureFeatures = [](const vk::PhysicalDevice& physicalDevice)
-{
-    vk::PhysicalDeviceAccelerationStructureFeaturesKHR accStructureFeatures = {};
-    vk::PhysicalDeviceFeatures2 physicalDeviceFeatures2 = {.pNext=&accStructureFeatures};
-    physicalDevice.getFeatures2(&physicalDeviceFeatures2);
-    return accStructureFeatures;
-};
-
-auto getAccStructureProperties = [](const vk::PhysicalDevice& physicalDevice)
-{
-    vk::PhysicalDeviceAccelerationStructurePropertiesKHR accStructureProperties = {};
-    vk::PhysicalDeviceProperties2 physicalDeviceProperties2 = {.pNext=&accStructureProperties};
-    physicalDevice.getProperties2(&physicalDeviceProperties2);
-    return accStructureProperties;
-};
-
-auto getRayQueryFeatures = [](const vk::PhysicalDevice& physicalDevice)
-{
-    vk::PhysicalDeviceRayQueryFeaturesKHR accRayQueryFeatures = {};
-    vk::PhysicalDeviceFeatures2 physicalDeviceFeatures2 = {.pNext=&accRayQueryFeatures};
-    physicalDevice.getFeatures2(&physicalDeviceFeatures2);
-    return accRayQueryFeatures;
-};
-
-
 int KenWrightMinimal_V1::run()
 {
+    auto getDeviceProperties = [](const vk::PhysicalDevice& physicalDevice)
+    {
+        vk::PhysicalDeviceProperties deviceProperties = physicalDevice.getProperties();
+        return deviceProperties;
+    };
+
+    auto getRayTracingFeatures = [](const vk::PhysicalDevice& physicalDevice)
+    {
+        vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingFeatures = {};
+        vk::PhysicalDeviceFeatures2 physicalDeviceFeatures2 = {.pNext=&rayTracingFeatures};
+        physicalDevice.getFeatures2(&physicalDeviceFeatures2);
+        return rayTracingFeatures;
+    };
+
+    auto getRayTracingProperties = [](const vk::PhysicalDevice& physicalDevice)
+    {
+        vk::PhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingPipelinePropertiesKhr = {};
+        vk::PhysicalDeviceProperties2 phyiscalDeviceProperties2 = {.pNext=&rayTracingPipelinePropertiesKhr};
+        physicalDevice.getProperties2(&phyiscalDeviceProperties2);
+        return rayTracingPipelinePropertiesKhr;
+    };
+
+    auto getAccStructureFeatures = [](const vk::PhysicalDevice& physicalDevice)
+    {
+        vk::PhysicalDeviceAccelerationStructureFeaturesKHR accStructureFeatures = {};
+        vk::PhysicalDeviceFeatures2 physicalDeviceFeatures2 = {.pNext=&accStructureFeatures};
+        physicalDevice.getFeatures2(&physicalDeviceFeatures2);
+        return accStructureFeatures;
+    };
+
+    auto getAccStructureProperties = [](const vk::PhysicalDevice& physicalDevice)
+    {
+        vk::PhysicalDeviceAccelerationStructurePropertiesKHR accStructureProperties = {};
+        vk::PhysicalDeviceProperties2 physicalDeviceProperties2 = {.pNext=&accStructureProperties};
+        physicalDevice.getProperties2(&physicalDeviceProperties2);
+        return accStructureProperties;
+    };
+
+    auto getRayQueryFeatures = [](const vk::PhysicalDevice& physicalDevice)
+    {
+        vk::PhysicalDeviceRayQueryFeaturesKHR accRayQueryFeatures = {};
+        vk::PhysicalDeviceFeatures2 physicalDeviceFeatures2 = {.pNext=&accRayQueryFeatures};
+        physicalDevice.getFeatures2(&physicalDeviceFeatures2);
+        return accRayQueryFeatures;
+    };
+
     // Init vulkan app info
     vk::ApplicationInfo appInfo;
     appInfo.setPApplicationName(APP_NAME)
@@ -913,14 +912,94 @@ int KenWrightMinimal_V1::run()
     // Using pre-compiled SPIRV shaders
 
     vk::ShaderModule raygenModule = createShaderModuleFromPreCompiledSPIRV("compiled_shaders/shader.rgen.spv");
+    vk::ShaderModule chitModule = createShaderModuleFromPreCompiledSPIRV("compiled_shaders/shader.rchit.spv");
+    vk::ShaderModule missModule = createShaderModuleFromPreCompiledSPIRV("compiled_shaders/shader.rmiss.spv");
+
+    std::vector<vk::PipelineShaderStageCreateInfo> stages = {
+        {.stage=vk::ShaderStageFlagBits::eRaygenKHR,                .module=raygenModule,       .pName="main"},
+        {.stage=vk::ShaderStageFlagBits::eMissKHR,                  .module=missModule,         .pName="main"},
+        {.stage=vk::ShaderStageFlagBits::eClosestHitKHR,            .module=chitModule,         .pName="main"},
+    };
+
+    std::vector<vk::RayTracingShaderGroupCreateInfoKHR> groups = 
+    {
+        {.type=vk::RayTracingShaderGroupTypeKHR::eGeneral,                  .generalShader=0,
+        .closestHitShader=VK_SHADER_UNUSED_KHR, .anyHitShader=VK_SHADER_UNUSED_KHR, .intersectionShader=VK_SHADER_UNUSED_KHR},
+        {.type=vk::RayTracingShaderGroupTypeKHR::eGeneral,                  .generalShader=1,
+        .closestHitShader=VK_SHADER_UNUSED_KHR, .anyHitShader=VK_SHADER_UNUSED_KHR, .intersectionShader=VK_SHADER_UNUSED_KHR},
+        {.type=vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,      .generalShader=VK_SHADER_UNUSED_KHR,
+        .closestHitShader=2, .anyHitShader=VK_SHADER_UNUSED_KHR, .intersectionShader=VK_SHADER_UNUSED_KHR}
+    };
+
+    vk::PipelineLayout rtPipelineLayout = device.createPipelineLayout( //vk::PipelineLayout
+    {
+        .setLayoutCount=1,
+        .pSetLayouts=&rtDescriptorSetLayout,
+        .pushConstantRangeCount=0,
+        .pPushConstantRanges=nullptr
+    });
+
+    vk::PipelineLibraryCreateInfoKHR libraryCreateInfo = {.libraryCount=0};
+    vk::RayTracingPipelineCreateInfoKHR pipelineCreateInfo = {
+        .stageCount=static_cast<uint32_t>(stages.size()),
+        .pStages=stages.data(),
+        .groupCount=static_cast<uint32_t>(groups.size()),
+        .pGroups=groups.data(),
+        .maxPipelineRayRecursionDepth=getRayTracingProperties(physicalDevice).maxRayRecursionDepth,
+        .pLibraryInfo=&libraryCreateInfo,
+        .pLibraryInterface=nullptr,
+        .layout=rtPipelineLayout,
+        .basePipelineHandle=VK_NULL_HANDLE,
+        .basePipelineIndex=0
+    };
+
+    vk::Pipeline rtPipeline = device.createRayTracingPipelineKHR(nullptr, nullptr, pipelineCreateInfo, nullptr, dynamicDispatchLoader).value;
+
+    // clean up shader modules after pipeline creation
+    device.destroyShaderModule(raygenModule);
+    device.destroyShaderModule(chitModule);
+    device.destroyShaderModule(missModule);
+
+    // Create Shader Binding Table
+    vk::StridedDeviceAddressRegionKHR sbtRayGenAddressRegion;
+    vk::StridedDeviceAddressRegionKHR sbtMissAddressingRegion;
+    vk::StridedDeviceAddressRegionKHR sbtHitAddressRegion;
     
+    [&device, &createBuffer, &rtPipeline, &getRayTracingProperties, &dynamicDispatchLoader, &physicalDevice] (
+        vk::StridedDeviceAddressRegionKHR& sbtRayGenAddressRegion,
+        vk::StridedDeviceAddressRegionKHR& sbtMissAddressRegion,
+        vk::StridedDeviceAddressRegionKHR& sbtHitAddressRegion)
+    {
+        vk::PhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingProperties = getRayTracingProperties(physicalDevice);
+        uint32_t baseAlignment = rayTracingProperties.shaderGroupBaseAlignment;
+        uint32_t handleSize = rayTracingProperties.shaderGroupHandleSize;
 
-    // std::vector<vk::PipelineShaderStageCreateInfo> stages = {
-    //     {.stage=vk::ShaderStageFlagBits::eRaygenKHR,                .module=raygenModule,       .pName="main"},
-    //     {.stage=vk::ShaderStageFlagBits::eMissKHR,                  .module=missModule,         .pName="main"},
-    //     {.stage=vk::ShaderStageFlagBits::eClosestHitKHR,            .module=chitModule,         .pName="main"},
-    // };
+        const uint32_t shaderGroupCount = 3;
+        vk::DeviceSize sbtBufferSize = baseAlignment * shaderGroupCount;
 
+        VulkanBuffer shaderBindingTableBuffer = createBuffer(sbtBufferSize,
+        vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+        std::vector<uint8_t> handles = device.getRayTracingShaderGroupHandlesKHR<uint8_t>(rtPipeline, 0, shaderGroupCount, 
+            shaderGroupCount * handleSize,
+            dynamicDispatchLoader);
+        
+        vk::DeviceAddress sbtAddress = device.getBufferAddress({.buffer=shaderBindingTableBuffer.buffer});
+
+        sbtRayGenAddressRegion = {.deviceAddress=sbtAddress + baseAlignment * 0, .stride=baseAlignment, .size=baseAlignment};
+        sbtMissAddressRegion = {.deviceAddress=sbtAddress + baseAlignment * 1, .stride=baseAlignment, .size=baseAlignment};
+        sbtHitAddressRegion = {.deviceAddress=sbtAddress + baseAlignment * 2, .stride=baseAlignment, .size=baseAlignment};
+
+        uint8_t* sbtBufferData = static_cast<uint8_t*>(device.mapMemory(shaderBindingTableBuffer.memory, 0, sbtBufferSize));
+        memcpy(sbtBufferData, handles.data(), handleSize);
+        memcpy(sbtBufferData + baseAlignment, handles.data() + handleSize, handleSize);
+        memcpy(sbtBufferData + baseAlignment * 2, handles.data() + handleSize * 2, handleSize);
+        device.unmapMemory(shaderBindingTableBuffer.memory);
+    }(sbtRayGenAddressRegion, sbtMissAddressingRegion, sbtHitAddressRegion);
+
+    // Ray tracing Output
+    
 
     instance.destroy();
     return 0;
