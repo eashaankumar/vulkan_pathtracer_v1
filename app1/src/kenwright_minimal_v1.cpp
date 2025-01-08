@@ -729,6 +729,163 @@ int KenWrightMinimal_V1::run()
     });
 
     // swap chain images
+    vk::ImageView swapChainImageViews[imageCount];
+    std::vector<vk::Image> swapChainImages=device.getSwapchainImagesKHR(swapChain);
+    for(int nn = 0; nn < imageCount; nn++)
+    {
+        auto image = swapChainImages[nn];
+        swapChainImageViews[nn] = createImageView(image, swapChainImageFormat);
+    }
+
+    // Create Images
+    VulkanImage renderTargetImage = createImage(swapChainImageFormat, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc);
+
+    // Descriptors/Bindings
+    vk::DescriptorSet rtDescriptorSet;
+    vk::DescriptorSetLayout rtDescriptorSetLayout;
+    VulkanBuffer uniformBuffer;
+
+    [&device, &settings, &createBuffer, &renderTargetImage, &topAccelerationStructure, &rtDescriptorSet, &rtDescriptorSetLayout, &uniformBuffer]()
+    {
+        struct UniformData
+        {
+            glm::mat4 viewInverse;
+            glm::mat4 projInverse;
+        };
+        UniformData uniformData{};
+        uniformData.projInverse = glm::inverse(glm::perspective(glm::radians(60.0f), (float)settings.windowWidth/(float)settings.windowHeight, 0.1f, 1000.0f));
+        uniformData.viewInverse = glm::inverse(glm::lookAt(glm::vec3(0.0, 0.0, -2.5), glm::vec3(0.0, 0.0, 0.0), glm::vec3(0.0, 1.0, 0.0)));
+        const vk::DeviceSize uniformBufferSize = sizeof(uniformData);
+
+        uniformBuffer=createBuffer(uniformBufferSize, vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eDeviceLocal, &uniformData);
+
+        // Create Descriptor Set Layout
+        std::vector<vk::DescriptorSetLayoutBinding> bindings = {
+            {.binding=0, .descriptorType=vk::DescriptorType::eStorageImage, .descriptorCount=1, .stageFlags=vk::ShaderStageFlagBits::eRaygenKHR},
+            {.binding=1, .descriptorType=vk::DescriptorType::eAccelerationStructureKHR, .descriptorCount=1, .stageFlags=vk::ShaderStageFlagBits::eRaygenKHR},
+            {.binding=2, .descriptorType=vk::DescriptorType::eUniformBuffer, .descriptorCount=1, .stageFlags=vk::ShaderStageFlagBits::eRaygenKHR},
+        };
+
+        rtDescriptorSetLayout=device.createDescriptorSetLayout({.bindingCount=static_cast<uint32_t>(bindings.size()), .pBindings=bindings.data()});
+
+        // Create Descriptor Pool
+        std::vector<vk::DescriptorPoolSize> poolSizes={
+            {.type=vk::DescriptorType::eStorageImage,                   .descriptorCount=1},
+            {.type=vk::DescriptorType::eAccelerationStructureKHR,       .descriptorCount=1},
+            {.type=vk::DescriptorType::eUniformBuffer,                  .descriptorCount=1},
+        };
+
+        vk::DescriptorPool rtDescriptorPool = device.createDescriptorPool(
+        {
+            .maxSets=1,
+            .poolSizeCount=static_cast<uint32_t>(poolSizes.size()),
+            .pPoolSizes=poolSizes.data()
+        });
+
+        // Create Descriptor Set
+        rtDescriptorSet = device.allocateDescriptorSets( // vk::DescriptorSet
+        {
+            .descriptorPool=rtDescriptorPool,
+            .descriptorSetCount=1,
+            .pSetLayouts=&rtDescriptorSetLayout
+        }).front();
+
+        auto renderTargetImageInfo = vk::DescriptorImageInfo{
+            .imageView=renderTargetImage.imageView,
+            .imageLayout=vk::ImageLayout::eGeneral
+        };
+
+        auto accelerationStructureInfo = vk::WriteDescriptorSetAccelerationStructureKHR{
+            .accelerationStructureCount=1,
+            .pAccelerationStructures=&topAccelerationStructure.accelerationStructure
+        };
+
+        auto uniformBufferInfo=vk::DescriptorBufferInfo{
+            .buffer=uniformBuffer.buffer,
+            .offset=0,
+            .range=uniformBufferSize
+        };
+
+        std::vector<vk::WriteDescriptorSet> descriptorWrites = {
+            {.dstSet=rtDescriptorSet, .dstBinding=0, .dstArrayElement=0, .descriptorCount=1, 
+             .descriptorType=vk::DescriptorType::eStorageImage, .pImageInfo=&renderTargetImageInfo},
+
+            {.pNext=&accelerationStructureInfo, 
+             .dstSet=rtDescriptorSet, .dstBinding=1, .dstArrayElement=0, .descriptorCount=1, 
+             .descriptorType=vk::DescriptorType::eAccelerationStructureKHR},
+
+            {.dstSet=rtDescriptorSet, .dstBinding=2, .dstArrayElement=0, .descriptorCount=1, 
+             .descriptorType=vk::DescriptorType::eUniformBuffer, .pBufferInfo=&uniformBufferInfo},
+        };
+
+        device.updateDescriptorSets(static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+    }();
+
+    // Shaders
+    auto createShaderModule = [&device] (const std::string& path)
+    {
+        auto readBinaryFile = [](const std::string& path)
+        {
+            std::ifstream file(path, std::ios::ate | std::ios::binary);
+            DBG_ASSERT_WARN(file.is_open(), "[Error] Failed to open file at '" + path + "'!");
+
+            size_t fileSize = (size_t)file.tellg();
+            std::vector<char> buffer(fileSize);
+
+            file.seekg(0);
+            file.read(buffer.data(), fileSize);
+            file.close();
+            return buffer;
+        };
+
+        std::vector<char> shaderCode = readBinaryFile(path);
+
+        vk::ShaderModuleCreateInfo shaderModuleCreateInfo = {
+            .codeSize=shaderCode.size(),
+            .pCode=reinterpret_cast<const uint32_t*>(shaderCode.data())
+        };
+
+        return device.createShaderModule(shaderModuleCreateInfo);
+    };
+
+    auto createShaderModuleFromGLSL = [&device] (const std::string& glslSourceCode, shaderc_shader_kind shaderKind)
+    {
+        const char* shaderSource = glslSourceCode.c_str();
+        
+        shaderc::Compiler compiler;
+        shaderc::CompileOptions options;
+        options.SetTargetSpirv(shaderc_spirv_version_1_6);
+
+        shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(shaderSource,
+            strlen(shaderSource),
+            shaderKind,
+            "shader.rmiss.spv",
+            options);
+        if (module.GetCompilationStatus() != shaderc_compilation_status_success)
+        {
+            std::cerr << module.GetErrorMessage() << std::endl;
+            DBG_ASSERT(0);
+        }
+
+        // retrieve spir v byte code from compilation result
+        const auto spirvCode = module.cbegin();
+        const size_t spirvSize = (size_t)(module.cend() - module.cbegin()) * 4; // uint32 to char
+
+        // create vulkan shader module
+        vk::ShaderModuleCreateInfo createInfo{.codeSize=spirvSize, .pCode=spirvCode};
+        return device.createShaderModule(createInfo);
+    };
+    
+    // Create shader modules from inline
+    vk::ShaderModule raygenModule = createShaderModuleFromGLSL(raygenShaderCode, shaderc_shader_kind::shaderc_raygen_shader); 
+    vk::ShaderModule chitModule = createShaderModuleFromGLSL(closestHitShaderCode, shaderc_shader_kind::shaderc_closesthit_shader);
+    vk::ShaderModule missModule = createShaderModuleFromGLSL(missShaderCode, shaderc_shader_kind::shaderc_miss_shader);
+
+    std::vector<vk::PipelineShaderStageCreateInfo> stages = {
+        {.stage=vk::ShaderStageFlagBits::eRaygenKHR,                .module=raygenModule,       .pName="main"},
+        {.stage=vk::ShaderStageFlagBits::eMissKHR,                  .module=missModule,         .pName="main"},
+        {.stage=vk::ShaderStageFlagBits::eClosestHitKHR,            .module=chitModule,         .pName="main"},
+    };
 
     instance.destroy();
     return 0;
