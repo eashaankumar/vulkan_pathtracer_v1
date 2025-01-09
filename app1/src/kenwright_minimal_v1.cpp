@@ -1126,12 +1126,112 @@ int KenWrightMinimal_V1::run()
             }
         }
     
-        
+        struct UniformData
+        {
+            glm::mat4 viewInverse;
+            glm::mat4 projInverse;
+        };
+
+        auto updateUniformBuffer = [&device, &uniformBuffer](UniformData& uniformData)
+        {
+            void* data = device.mapMemory(uniformBuffer.memory, 0, sizeof(uniformBuffer));
+            memcpy(data, &uniformData, sizeof(uniformData));
+            device.unmapMemory(uniformBuffer.memory);
+        };
+
+        float dist = 2.5f;
+        yAngle += 0.05f;
+        glm::mat4 ident(1.0f);
+        glm::mat4 rotY = glm::rotate(ident, yAngle, glm::vec3(0.0, 1.0f, 0.0f));
+        glm::vec3 camZ = glm::vec3(rotY[0][0] * dist, rotY[0][1] * dist, rotY[0][2] * dist);
+
+        UniformData uniformData{};
+        uniformData.projInverse = glm::inverse(glm::perspective(glm::radians(60.0f), (float)settings.windowWidth / (float)settings.windowHeight, 0.1f, 1000.0f));
+        uniformData.viewInverse = glm::inverse(glm::lookAt(camZ, glm::vec3(0,0,0), glm::vec3(0, 1, 0)));
+        updateUniformBuffer(uniformData);
+
+        auto swapChainImageIndex = device.acquireNextImageKHR(swapChain, std::numeric_limits<uint64_t>::max(), semaphore2, {}).value;
+
+        vk::PipelineStageFlags waitStageMask = vk::PipelineStageFlagBits::eTransfer;
+
+        device.resetFences(fence);
+
+        vk::SubmitInfo submitInfo = {
+            .waitSemaphoreCount=1,
+            .pWaitSemaphores=&semaphore2,
+            .pWaitDstStageMask=&waitStageMask,
+            .commandBufferCount=1,
+            .pCommandBuffers=&commandBuffers[swapChainImageIndex],
+            .signalSemaphoreCount=1,
+            .pSignalSemaphores=&semaphore
+        };
+
+        VK_CHECK_RESULT(computePresentQueue.submit(1, &submitInfo, fence));
+
+        VK_CHECK_RESULT(device.waitForFences(1, &fence, true, UINT64_MAX));
+        device.resetFences(fence);
+
+        vk::PresentInfoKHR presentInfo = {
+            .waitSemaphoreCount=1,
+            .pWaitSemaphores=&semaphore,
+            .swapchainCount=1,
+            .pSwapchains=&swapChain,
+            .pImageIndices=&swapChainImageIndex
+        };
+
+        VK_CHECK_RESULT(computePresentQueue.presentKHR(presentInfo));
+
+        device.waitIdle();
     }
 
-    
+    // Cleanup
+    device.destroySemaphore(semaphore);
+    device.destroySemaphore(semaphore2);
+    device.destroyFence(fence);
+    device.destroyPipeline(rtPipeline);
+    device.destroyPipelineLayout(rtPipelineLayout);
+    // device.destroyDescriptorSetLayout(rtDescriptorSetLayout);
+    // device.destroyDescriptorPool(rtDescriptorPool);
 
+    auto destroyBuffer = [&device](const VulkanBuffer& buffer)
+    {
+        device.destroyBuffer(buffer.buffer);
+        device.freeMemory(buffer.memory);
+    };
+
+    auto destroyAccelerationStructure = [&device, &destroyBuffer](const VulkanAccelerationStructure& accelerationStructure, vk::DispatchLoaderDynamic& dynamicDispatchLoader)
+    {
+        device.destroyAccelerationStructureKHR(accelerationStructure.accelerationStructure, nullptr, dynamicDispatchLoader);
+        destroyBuffer(accelerationStructure.structureBuffer);
+        destroyBuffer(accelerationStructure.scratchBuffer);
+        destroyBuffer(accelerationStructure.instancesBuffer);
+    };
+
+    destroyAccelerationStructure(topAccelerationStructure, dynamicDispatchLoader);
+    destroyAccelerationStructure(bottomAccelerationStructure, dynamicDispatchLoader);
+
+    // destroyBuffer(uniformBuffer, device);
+    // destroyBuffer(shaderBindingTableBuffer, device);
+
+    // device.destroyImageView(swapChainImageView); // todo
+    device.destroySwapchainKHR(swapChain);
+    device.destroyCommandPool(commandPool);
+
+    auto destroyImage = [&device](const VulkanImage& image)
+    {
+        device.destroyImageView(image.imageView);
+        device.destroyImage(image.image);
+        device.freeMemory(image.memory);
+    };
+
+    destroyImage(renderTargetImage);
+
+    device.destroy();
+    instance.destroySurfaceKHR(surface);
     instance.destroy();
+
+    SDL_DestroyWindow(window);
+    SDL_Quit();
     return 0;
 }
 #endif
