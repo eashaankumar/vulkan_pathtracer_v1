@@ -372,19 +372,20 @@ int KenWrightMinimal_V1::run()
 
     // BLAS
 
-    const uint32_t numTriangles = 1;
+    const uint32_t numTriangles = 2;
 
     struct Vertex {
         float pos[3];
     };
 
     const std::vector<Vertex> vertices = {
-        {{1.0f, 1.0f, 0.0f}},
-        {{-1.0f, 1.0f, 0.0f}},
-        {{0.0, -1.0f, 0.0f}}
+        {{0, 0.5f, 0.0f}},
+        {{0.5f, 0.5f, 0.0f}},
+        {{0.5f, 0, 0.0f}},
+        {{0.0, 0, 0.0f}},
     };
 
-    std::vector<uint32_t> indices = {0, 1, 2};
+    std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
     uint32_t indexCount = static_cast<uint32_t>(indices.size());
 
     const VkTransformMatrixKHR transformMatrix = {
@@ -851,34 +852,6 @@ int KenWrightMinimal_V1::run()
         return device.createShaderModule(shaderModuleCreateInfo);
     };
 
-    // auto createShaderModuleFromGLSL = [&device] (const std::string& glslSourceCode, shaderc_shader_kind shaderKind)
-    // {
-    //     const char* shaderSource = glslSourceCode.c_str();
-        
-    //     shaderc::Compiler compiler;
-    //     shaderc::CompileOptions options;
-    //     options.SetTargetSpirv(shaderc_spirv_version_1_6);
-
-    //     shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(shaderSource,
-    //         strlen(shaderSource),
-    //         shaderKind,
-    //         "shader.rmiss.spv",
-    //         options);
-    //     if (module.GetCompilationStatus() != shaderc_compilation_status_success)
-    //     {
-    //         std::cerr << module.GetErrorMessage() << std::endl;
-    //         DBG_ASSERT(0);
-    //     }
-
-    //     // retrieve spir v byte code from compilation result
-    //     const auto spirvCode = module.cbegin();
-    //     const size_t spirvSize = (size_t)(module.cend() - module.cbegin()) * 4; // uint32 to char
-
-    //     // create vulkan shader module
-    //     vk::ShaderModuleCreateInfo createInfo{.codeSize=spirvSize, .pCode=spirvCode};
-    //     return device.createShaderModule(createInfo);
-    // };
-    
     auto createShaderModuleFromPreCompiledSPIRV = [&device] (const std::string& path)
     {
         std::ifstream rayMissFile(path, std::ios::binary | std::ios::ate);
@@ -892,23 +865,10 @@ int KenWrightMinimal_V1::run()
 
         rayMissFile.close();
 
-        // VkShaderModuleCreateInfo rayMissShaderModuleCreateInfo = {
-        //     .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        //     .pNext = NULL,
-        //     .flags = 0,
-        //     .codeSize = (uint32_t)rayMissShaderSource.size() * sizeof(uint32_t),
-        //     .pCode = rayMissShaderSource.data()};
-
-        // VkShaderModule rayMissShaderModuleHandle = VK_NULL_HANDLE;
-
         vk::ShaderModuleCreateInfo createInfo{.codeSize=(uint32_t)rayMissShaderSource.size() * sizeof(uint32_t), .pCode=rayMissShaderSource.data()};
         return device.createShaderModule(createInfo);
     };
     // Create shader modules from inline
-    // vk::ShaderModule raygenModule = createShaderModuleFromGLSL(raygenShaderCode, shaderc_shader_kind::shaderc_raygen_shader); 
-    // vk::ShaderModule chitModule = createShaderModuleFromGLSL(closestHitShaderCode, shaderc_shader_kind::shaderc_closesthit_shader);
-    // vk::ShaderModule missModule = createShaderModuleFromGLSL(missShaderCode, shaderc_shader_kind::shaderc_miss_shader);
-
     // Using pre-compiled SPIRV shaders
 
     vk::ShaderModule raygenModule = createShaderModuleFromPreCompiledSPIRV("compiled_shaders/shader.rgen.spv");

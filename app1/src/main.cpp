@@ -1,7 +1,5 @@
 #include <iostream>
-#include "renderer_rt_minimal_v1.hpp"
 #include "renderer_raster.hpp"
-#include "kenwright_1_2.hpp"
 #include "kenwright_minimal_v1.hpp"
 
 // # argv and char** necessary for SDL_main error to go away
