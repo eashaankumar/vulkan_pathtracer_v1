@@ -1002,6 +1002,133 @@ int KenWrightMinimal_V1::run()
     }(sbtRayGenAddressRegion, sbtMissAddressingRegion, sbtHitAddressRegion);
 
     // Ray tracing Output
+    auto getImagePipelineBarrier = [](const vk::AccessFlagBits& srcAccessFlags, const vk::AccessFlagBits& dstAccessFlags,
+        const vk::ImageLayout& oldLayout, const vk::ImageLayout& newLayout,
+        const vk::Image& image, uint32_t computeQueueFamily)
+    {
+        return vk::ImageMemoryBarrier{
+            .srcAccessMask=srcAccessFlags,
+            .dstAccessMask=dstAccessFlags,
+            .oldLayout=oldLayout,
+            .newLayout=newLayout,
+            .srcQueueFamilyIndex=computeQueueFamily,
+            .dstQueueFamilyIndex=computeQueueFamily,
+            .image=image,
+            .subresourceRange={
+                .aspectMask=vk::ImageAspectFlagBits::eColor,
+                .baseMipLevel=0,
+                .levelCount=1,
+                .baseArrayLayer=0,
+                .layerCount=1
+            },
+        };
+    };
+
+    std::vector<vk::CommandBuffer> commandBuffers = device.allocateCommandBuffers(
+        {
+            .commandPool=commandPool,
+            .level=vk::CommandBufferLevel::ePrimary,
+            .commandBufferCount=imageCount
+        }
+    );
+
+    #if 1
+    for(size_t nn = 0; nn < commandBuffers.size(); nn++)
+    {
+        vk::CommandBufferBeginInfo beginInfo = {};
+        VK_CHECK_RESULT(commandBuffers[nn].begin(&beginInfo));
+
+        // Render target image & summed pixel color image: Undefined -> General
+        vk::ImageMemoryBarrier imageBarriersToGeneral[2] = {
+            getImagePipelineBarrier(
+                vk::AccessFlagBits::eNoneKHR, vk::AccessFlagBits::eShaderWrite,
+                vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, renderTargetImage.image, queueId
+            )
+        };
+
+        commandBuffers[nn].pipelineBarrier(vk::PipelineStageFlagBits::eRayTracingShaderKHR,
+            vk::PipelineStageFlagBits::eRayTracingShaderKHR,
+            vk::DependencyFlagBits::eByRegion, 0, nullptr,
+            0, nullptr, 1, imageBarriersToGeneral);
+
+        // Ray Tracing
+        commandBuffers[nn].bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, rtPipeline);
+        
+        std::vector<vk::DescriptorSet> descriptorSets={rtDescriptorSet};
+        commandBuffers[nn].bindDescriptorSets(vk::PipelineBindPoint::eRayTracingKHR, rtPipelineLayout,
+            0, descriptorSets, nullptr);
+        
+        commandBuffers[nn].traceRaysKHR(sbtRayGenAddressRegion, sbtMissAddressingRegion, sbtHitAddressRegion, {},
+            settings.windowWidth, settings.windowHeight, 1, dynamicDispatchLoader);
+
+        // Render target image: General -> Transfer src & swap chain image : undefined => transfor dst
+        vk::ImageMemoryBarrier imageBarriersToTransfer[2] = 
+        {
+            getImagePipelineBarrier(
+                vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eTransferRead,
+                vk::ImageLayout::eGeneral, vk::ImageLayout::eGeneral, renderTargetImage.image, queueId
+            ),
+            getImagePipelineBarrier(
+                vk::AccessFlagBits::eNoneKHR, vk::AccessFlagBits::eTransferWrite, 
+                vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, swapChainImages[nn], queueId
+            )
+        };
+
+        commandBuffers[nn].pipelineBarrier(vk::PipelineStageFlagBits::eRayTracingShaderKHR, vk::PipelineStageFlagBits::eTransfer,
+            vk::DependencyFlagBits::eByRegion, 0, nullptr, 0, nullptr, 2, imageBarriersToTransfer);
+
+        // Copy render target image to swap chainimage
+        vk::ImageSubresourceLayers subresourceLayers = {
+            .aspectMask=vk::ImageAspectFlagBits::eColor,
+            .mipLevel=0,
+            .baseArrayLayer=0,
+            .layerCount=1
+        };
+
+        vk::ImageCopy imageCopy = {
+            .srcSubresource=subresourceLayers, .srcOffset={0,0,0},
+            .dstSubresource=subresourceLayers, .dstOffset={0,0,0},
+            .extent={.width=settings.windowWidth, .height=settings.windowHeight, .depth=1}
+        };
+
+        commandBuffers[nn].copyImage(renderTargetImage.image, vk::ImageLayout::eGeneral, swapChainImages[nn], vk::ImageLayout::eTransferDstOptimal, 1, &imageCopy);
+
+        // Swap chain images - transfer -> present
+        vk::ImageMemoryBarrier barrierSwapChainToPresent = getImagePipelineBarrier(
+            vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eMemoryRead,
+            vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR, swapChainImages[nn], queueId
+        );
+
+        commandBuffers[nn].pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer,
+            vk::DependencyFlagBits::eByRegion, 0, nullptr,
+            0, nullptr, 1, &barrierSwapChainToPresent);
+        
+        commandBuffers[nn].end();
+    }
+    #endif
+
+    vk::Fence fence = device.createFence({});
+
+    vk::Semaphore semaphore = device.createSemaphore({});
+    vk::Semaphore semaphore2 = device.createSemaphore({});
+
+    // ------------------Render Loop-------------------
+
+    float yAngle = 0;
+    bool running = true;
+    while (running) {
+        SDL_Event windowEvent;
+        while(SDL_PollEvent(&windowEvent))
+        {
+            if(windowEvent.type == SDL_QUIT) {
+                running = false;
+                break;
+            }
+        }
+    
+        
+    }
+
     
 
     instance.destroy();
