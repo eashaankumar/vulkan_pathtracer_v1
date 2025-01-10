@@ -269,7 +269,7 @@ int KenWrightMinimal_V1::run()
         return (uint32_t)-1;
     }();
 
-    //std::cout << queueId << std::endl;
+    std::cout << queueId << std::endl;
 
     // create logical device
     float queuePriority = 1.0;

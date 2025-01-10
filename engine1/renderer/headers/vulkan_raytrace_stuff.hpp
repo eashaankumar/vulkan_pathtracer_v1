@@ -11,10 +11,12 @@
 class VulkanRaytraceStuff
 {
 public:
-    // VulkanRaytraceStuff(const VulkanRaytraceStuff&) = delete;
     void init(const char* appname, std::vector<const char *>& requiredInstanceExtensions);
     ~VulkanRaytraceStuff();
     
     std::unique_ptr<vk::Instance> instance;
+    std::unique_ptr<vk::PhysicalDevice> physicalDevice;
+    std::unique_ptr<uint32_t> queueId;
+    std::unique_ptr<vk::Device> device;
 };
 #endif
