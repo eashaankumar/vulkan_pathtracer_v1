@@ -14,9 +14,31 @@ public:
     void init(const char* appname, std::vector<const char *>& requiredInstanceExtensions);
     ~VulkanRaytraceStuff();
     
-    std::unique_ptr<vk::Instance> instance;
-    std::unique_ptr<vk::PhysicalDevice> physicalDevice;
-    std::unique_ptr<uint32_t> queueId;
-    std::unique_ptr<vk::Device> device;
+    vk::Instance instance;
+    vk::PhysicalDevice physicalDevice;
+    uint32_t queueId;
+    vk::Device device;
+    vk::DispatchLoaderDynamic dynamicDispatchLoader;
+    vk::Queue computePresentQueue;
+    vk::CommandPool commandPool;
+
+    struct VulkanBuffer {
+        vk::Buffer buffer;
+        vk::DeviceMemory memory;
+        vk::DeviceAddress address;
+    };
+
+    struct Vertex {
+        float pos[3];
+    };
+    
+    struct VulkanAccelerationStructure
+    {
+        vk::AccelerationStructureKHR accelerationStructure;
+        VulkanBuffer structureBuffer;
+        VulkanBuffer scratchBuffer;
+        VulkanBuffer instancesBuffer;
+    };
+
 };
 #endif
