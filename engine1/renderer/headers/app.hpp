@@ -1,5 +1,4 @@
 #include <memory>
-#include "window.hpp"
 #include "vulkan_raytrace_stuff.hpp"
 
 #ifndef APP_HPP
@@ -10,7 +9,6 @@ public:
     int run();
     ~App();
 
-    std::unique_ptr<Window> window;
     std::unique_ptr<VulkanRaytraceStuff> vulkanRayTraceStuff;
 };
 #endif

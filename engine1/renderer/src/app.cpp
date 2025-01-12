@@ -8,11 +8,9 @@
 App::App()
 {
     LOG("App init");
-    window = std::make_unique<Window>(Window("App", 500, 500));
-
-    
+    // https://aistudio.google.com/prompts/new_chat?gad_source=1&gclid=Cj0KCQiAyoi8BhDvARIsAO_CDsB8cSUUB2p4OtXkKttuaZBj9smU9RrnSYQugPYL6e0YY4FHsGzq6JAaAkklEALw_wcB
     vulkanRayTraceStuff = std::make_unique<VulkanRaytraceStuff> ();
-    vulkanRayTraceStuff->init("App", window->requiredInstanceExtensions);
+    vulkanRayTraceStuff->init("App", 500, 500);
 }
 
 int App::run()

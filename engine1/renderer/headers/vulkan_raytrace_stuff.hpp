@@ -3,6 +3,8 @@
 #define VULKAN_HPP_HAS_SPACESHIP_OPERATOR
 #include <vulkan/vulkan.hpp>
 
+#include <SDL2/SDL_vulkan.h>
+
 #include <vector>
 #include <memory>
 
@@ -11,9 +13,11 @@
 class VulkanRaytraceStuff
 {
 public:
-    void init(const char* appname, std::vector<const char *>& requiredInstanceExtensions);
+    void init(const char* appname, int width, int height);
     ~VulkanRaytraceStuff();
     
+    SDL_Window* window;
+    std::vector<const char *> requiredInstanceExtensions;
     vk::Instance instance;
     vk::PhysicalDevice physicalDevice;
     uint32_t queueId;
@@ -38,6 +42,13 @@ public:
         VulkanBuffer structureBuffer;
         VulkanBuffer scratchBuffer;
         VulkanBuffer instancesBuffer;
+    };
+
+    struct VulkanImage
+    {
+        vk::Image image;
+        vk::DeviceMemory memory;
+        vk::ImageView imageView;
     };
 
 };

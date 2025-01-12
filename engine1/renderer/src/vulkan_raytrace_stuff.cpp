@@ -1,6 +1,8 @@
 #include "vulkan_raytrace_stuff.hpp"
 #include <iostream>
 #include <set>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_vulkan.h>
 
 #ifdef VULKAN_RAYTRACE_STUFF
 
@@ -71,6 +73,7 @@ auto getRayQueryFeatures = [](const vk::PhysicalDevice& physicalDevice)
 
 ///
 /// helpers
+std::vector<const char *> getExtensions(SDL_Window* window);
 vk::PhysicalDevice getPhysicalDevice(vk::Instance& instance);
 uint32_t getQueueId(vk::PhysicalDevice& physicalDevice);
 vk::Device createLogicalDevice(uint32_t queueId, vk::PhysicalDevice& physicalDevice);
@@ -79,35 +82,151 @@ VulkanRaytraceStuff::VulkanBuffer createBuffer(vk::PhysicalDevice& physicalDevic
         const vk::Flags<vk::BufferUsageFlagBits>& usage,
         const vk::Flags<vk::MemoryPropertyFlagBits>& memoryProperty,
         const void* data);
-void BuildRTAS(vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader, vk::CommandPool& commandPool, vk::Queue& computePresentQueue);
+void BuildRTAS(vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader, vk::CommandPool& commandPool, 
+vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure& topAccelerationStructure);
+vk::ImageView createImageView (vk::Device& device, const vk::Image& image, const vk::Format& format);
+VulkanRaytraceStuff::VulkanImage createImage(vk::Device& device, vk::PhysicalDevice& physicalDevice, const vk::Format& format,
+        const vk::Flags<vk::ImageUsageFlagBits>& usageFlagBits, const uint32_t width, const uint32_t height);
 
 
-void VulkanRaytraceStuff::init(const char* appname, std::vector<const char *>& requiredInstanceExtensions )
+void VulkanRaytraceStuff::init(const char* appname, int width, int height)
 {
+    // vk::ApplicationInfo appInfo;
+    // appInfo.setPApplicationName(appname)
+    //         .setApplicationVersion(VK_MAKE_VERSION(1, 0, 0))
+    //         .setPEngineName("Engine1")
+    //         .setEngineVersion(VK_MAKE_VERSION(1, 0, 0))
+    //         .setApiVersion(VK_API_VERSION_1_2);
+
+    // vk::InstanceCreateInfo instanceCreateInfo;
+    // instanceCreateInfo.setPApplicationInfo(&appInfo);
+    // instanceCreateInfo.enabledExtensionCount = (uint32_t)requiredInstanceExtensions.size();
+    // instanceCreateInfo.ppEnabledExtensionNames = requiredInstanceExtensions.data();
+
+    // LOG("Vulkan Raytracing Stuff");
+    
+    // instance = (vk::createInstance(instanceCreateInfo));
+    // physicalDevice = (getPhysicalDevice(instance));
+    // queueId = (getQueueId(physicalDevice));
+    // LOG(queueId);
+    // device = (createLogicalDevice(queueId, physicalDevice));
+    // dynamicDispatchLoader = vk::DispatchLoaderDynamic(instance, vkGetInstanceProcAddr, device);
+    // computePresentQueue = device.getQueue(queueId, 0);
+    // commandPool = device.createCommandPool({.queueFamilyIndex=queueId});
+
+    // VulkanRaytraceStuff::VulkanAccelerationStructure topAccelerationStructure;
+    // BuildRTAS(physicalDevice, device, dynamicDispatchLoader, commandPool, computePresentQueue, topAccelerationStructure);
+
+    // VkSurfaceKHR surface;
+    // SDL_Vulkan_CreateSurface(window, instance, &surface );
+
+    // const uint32_t imageCount=3;
+    // const vk::Format swapChainImageFormat=vk::Format::eB8G8R8A8Unorm; // vk::Format::eR8G8B8A8Unorm
+
+    // LOG(width);
+
+    // // Create Swap Chain
+    // vk::SwapchainKHR swapChain = device.createSwapchainKHR(vk::SwapchainCreateInfoKHR{
+    //     .surface=surface,
+    //     .minImageCount=imageCount,
+    //     .imageFormat=swapChainImageFormat, // VK_FORMAT_B8G8R8A8_UNORM
+    //     .imageColorSpace=vk::ColorSpaceKHR::eSrgbNonlinear,
+    //     .imageExtent={.width=static_cast<uint32_t>(width), .height=static_cast<uint32_t>(height)},
+    //     .imageArrayLayers=1,
+    //     .imageUsage=vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst,
+    //     .imageSharingMode=vk::SharingMode::eExclusive,
+    //     .preTransform=physicalDevice.getSurfaceCapabilitiesKHR(surface).currentTransform,
+    //     .compositeAlpha=vk::CompositeAlphaFlagBitsKHR::eOpaque,
+    //     .presentMode=vk::PresentModeKHR::eFifo, // vk::PresentModeKHR::eImmediate
+    //     .clipped=true,
+    //     .oldSwapchain=nullptr
+    // });
+
+    // LOG("Created swap chain");
+
+    // Init vulkan app info
     vk::ApplicationInfo appInfo;
     appInfo.setPApplicationName(appname)
             .setApplicationVersion(VK_MAKE_VERSION(1, 0, 0))
-            .setPEngineName("Engine1")
+            .setPEngineName("No Engine")
             .setEngineVersion(VK_MAKE_VERSION(1, 0, 0))
             .setApiVersion(VK_API_VERSION_1_2);
-
+    
+    // Vulkan instance create info
     vk::InstanceCreateInfo instanceCreateInfo;
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Vulkan_LoadLibrary(nullptr);
+    window = SDL_CreateWindow(appname, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_SHOWN | SDL_WINDOW_VULKAN);
+    
+    std::vector<const char *> requiredInstanceExtensions = getExtensions(window);
+
     instanceCreateInfo.setPApplicationInfo(&appInfo);
     instanceCreateInfo.enabledExtensionCount = (uint32_t)requiredInstanceExtensions.size();
     instanceCreateInfo.ppEnabledExtensionNames = requiredInstanceExtensions.data();
 
-    LOG("Vulkan Raytracing Stuff");
-    
     instance = (vk::createInstance(instanceCreateInfo));
+
     physicalDevice = (getPhysicalDevice(instance));
+
+
     queueId = (getQueueId(physicalDevice));
-    LOG("Queue Id: " + queueId);
+
+
+    std::cout << queueId << std::endl;
+
     device = (createLogicalDevice(queueId, physicalDevice));
+
+
     dynamicDispatchLoader = vk::DispatchLoaderDynamic(instance, vkGetInstanceProcAddr, device);
     computePresentQueue = device.getQueue(queueId, 0);
     commandPool = device.createCommandPool({.queueFamilyIndex=queueId});
+    
 
-    BuildRTAS(physicalDevice, device, dynamicDispatchLoader, commandPool, computePresentQueue);
+    VulkanRaytraceStuff::VulkanAccelerationStructure topAccelerationStructure;
+    BuildRTAS(physicalDevice, device, dynamicDispatchLoader, commandPool, computePresentQueue, topAccelerationStructure);
+
+    VkSurfaceKHR surface;
+    SDL_Vulkan_CreateSurface(window, instance, &surface );
+
+    const uint32_t imageCount=3;
+    const vk::Format swapChainImageFormat=vk::Format::eB8G8R8A8Unorm; // vk::Format::eR8G8B8A8Unorm
+
+    vk::Extent2D extent = {
+        .width=static_cast<uint32_t>(width),.height=static_cast<uint32_t>(height)
+    };
+
+    // Create Swap Chain
+    vk::SwapchainKHR swapChain = device.createSwapchainKHR(vk::SwapchainCreateInfoKHR{
+        .surface=surface,
+        .minImageCount=imageCount,
+        .imageFormat=swapChainImageFormat, // VK_FORMAT_B8G8R8A8_UNORM
+        .imageColorSpace=vk::ColorSpaceKHR::eSrgbNonlinear,
+        .imageExtent=extent,
+        .imageArrayLayers=1,
+        .imageUsage=vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst,
+        .imageSharingMode=vk::SharingMode::eExclusive,
+        .preTransform=physicalDevice.getSurfaceCapabilitiesKHR(surface).currentTransform,
+        .compositeAlpha=vk::CompositeAlphaFlagBitsKHR::eOpaque,
+        .presentMode=vk::PresentModeKHR::eFifo, // vk::PresentModeKHR::eImmediate
+        .clipped=true,
+        .oldSwapchain=nullptr
+    });
+}
+
+std::vector<const char *> getExtensions(SDL_Window* window)
+{
+    std::vector<const char *> requiredInstanceExtensions = {};    
+    uint32_t extensionCount;
+    const char** extensionNames = 0;
+    SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, nullptr);
+    extensionNames = new const char *[extensionCount];
+    SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, extensionNames);
+    // append all SDL based extensions to total extension name list
+    for(int i = 0; i < extensionCount; i++)
+    {
+        requiredInstanceExtensions.push_back(extensionNames[i]);
+    }
+    return requiredInstanceExtensions;
 }
 
 /// @brief step 1
@@ -283,7 +402,8 @@ VulkanRaytraceStuff::VulkanBuffer createBuffer(vk::PhysicalDevice& physicalDevic
 }
 
 /// @brief Step 4
-void BuildRTAS(vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader, vk::CommandPool& commandPool, vk::Queue& computePresentQueue)
+void BuildRTAS(vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader, vk::CommandPool& commandPool, 
+vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure& topAccelerationStructure)
 {
     const uint32_t numTriangles = 2;
     const std::vector<VulkanRaytraceStuff::Vertex> vertices = {
@@ -448,7 +568,7 @@ void BuildRTAS(vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::Dispa
         buildInfoTLAS, {1}, dynamicDispatchLoader
     );
 
-    VulkanRaytraceStuff::VulkanAccelerationStructure topAccelerationStructure;
+    //VulkanRaytraceStuff::VulkanAccelerationStructure topAccelerationStructure;
 
     // Allocate buffer for the acceleration structure
     topAccelerationStructure.structureBuffer = createBuffer(physicalDevice, device, buildSizesInfoTLAS.accelerationStructureSize,
@@ -536,6 +656,61 @@ void BuildRTAS(vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::Dispa
         device.destroyFence(f);
         device.freeCommandBuffers(commandPool, singleTimeBuffer);
     }();
+}
+
+vk::ImageView createImageView (vk::Device& device, const vk::Image& image, const vk::Format& format)
+{
+    return device.createImageView(
+        {
+            .image=image,
+            .viewType=vk::ImageViewType::e2D,
+            .format=format,
+            .subresourceRange=
+            {
+                .aspectMask=vk::ImageAspectFlagBits::eColor,
+                .baseMipLevel=0,
+                .levelCount=1,
+                .baseArrayLayer=0,
+                .layerCount=1
+            }
+        }
+    );
+};
+
+VulkanRaytraceStuff::VulkanImage createImage(vk::Device& device, vk::PhysicalDevice& physicalDevice, const vk::Format& format,
+        const vk::Flags<vk::ImageUsageFlagBits>& usageFlagBits, const uint32_t width, const uint32_t height)
+{
+    vk::ImageCreateInfo imageCreateInfo = {
+        .imageType=vk::ImageType::e2D,
+        .format=format,
+        .extent={.width=width, .height=height, .depth=1},
+        .mipLevels=1,
+        .arrayLayers=1,
+        .samples=vk::SampleCountFlagBits::e1,
+        .tiling=vk::ImageTiling::eOptimal,
+        .usage=usageFlagBits,
+        .sharingMode=vk::SharingMode::eExclusive,
+        .initialLayout=vk::ImageLayout::eUndefined
+    };
+
+    vk::Image image = device.createImage(imageCreateInfo);
+
+    vk::MemoryRequirements memoryRequirements = device.getImageMemoryRequirements(image);
+    
+    vk::MemoryAllocateInfo allocateInfo = 
+    {
+        .allocationSize=memoryRequirements.size,
+        .memoryTypeIndex=findMemoryTypeIndex(physicalDevice, memoryRequirements.memoryTypeBits,
+                                            vk::MemoryPropertyFlagBits::eDeviceLocal)
+    };
+
+    vk::DeviceMemory memory = device.allocateMemory(allocateInfo);
+    device.bindImageMemory(image, memory, 0);
+    return VulkanRaytraceStuff::VulkanImage{
+        .image = image,
+        .memory=memory,
+        .imageView=createImageView(device, image, format)
+    };
 }
 
 VulkanRaytraceStuff::~VulkanRaytraceStuff()
