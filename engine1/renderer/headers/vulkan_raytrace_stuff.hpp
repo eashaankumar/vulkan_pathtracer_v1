@@ -57,5 +57,11 @@ public:
         vk::ImageView imageView;
     };
 
+    struct UniformData
+    {
+        glm::mat4 viewInverse;
+        glm::mat4 projInverse;
+    };
+
 };
 #endif

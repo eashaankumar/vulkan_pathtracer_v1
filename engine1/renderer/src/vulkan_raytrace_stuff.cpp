@@ -118,6 +118,14 @@ void createShaderBindingTable(vk::Device& device, vk::PhysicalDevice& physicalDe
                             vk::StridedDeviceAddressRegionKHR& sbtRayGenAddressRegion,
                             vk::StridedDeviceAddressRegionKHR& sbtMissAddressRegion,
                             vk::StridedDeviceAddressRegionKHR& sbtHitAddressRegion);
+void prepareCommandBuffers(std::vector<vk::CommandBuffer>& commandBuffers, VulkanRaytraceStuff::VulkanImage& renderTargetImage, uint32_t queueId, vk::Pipeline& rtPipeline,
+                            vk::DescriptorSet& rtDescriptorSet, vk::PipelineLayout& rtPipelineLayout,
+                            vk::StridedDeviceAddressRegionKHR& sbtRayGenAddressRegion,
+                            vk::StridedDeviceAddressRegionKHR& sbtMissAddressRegion,
+                            vk::StridedDeviceAddressRegionKHR& sbtHitAddressRegion,
+                            const uint32_t width, const uint32_t height, vk::DispatchLoaderDynamic& dynamicDispatchLoader, std::vector<vk::Image>& swapChainImages);
+void updateUniformBuffer(vk::Device& device, VulkanRaytraceStuff::VulkanBuffer& uniformBuffer, VulkanRaytraceStuff::UniformData& uniformData);
+
 
 void VulkanRaytraceStuff::init(const char* appname, int width, int height)
 {
@@ -262,6 +270,71 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
         .level=vk::CommandBufferLevel::ePrimary,
         .commandBufferCount=imageCount
     });
+
+    prepareCommandBuffers(commandBuffers, renderTargetImage, queueId, rtPipeline, rtDescriptorSet, rtPipelineLayout, sbtRayGenAddressRegion, 
+                        sbtMissAddressRegion, sbtHitAddressRegion, extent.width, extent.height, dynamicDispatchLoader, swapChainImages);
+
+    vk::Fence fence = device.createFence({});
+
+    vk::Semaphore semaphore = device.createSemaphore({});
+    vk::Semaphore semaphore2 = device.createSemaphore({});
+
+    float yAngle = 0;
+    bool running = true;
+    while (running) {
+        SDL_Event windowEvent;
+        while(SDL_PollEvent(&windowEvent))
+        {
+            if(windowEvent.type == SDL_QUIT) {
+                running = false;
+                break;
+            }
+        }
+
+        float dist = 2.5f;
+        yAngle += 0.05f;
+        glm::mat4 ident(1.0f);
+        glm::mat4 rotY = glm::rotate(ident, yAngle, glm::vec3(0.0, 1.0f, 0.0f));
+        glm::vec3 camZ = glm::vec3(rotY[0][0] * dist, rotY[0][1] * dist, rotY[0][2] * dist);
+
+        UniformData uniformData{};
+        uniformData.projInverse = glm::inverse(glm::perspective(glm::radians(60.0f), (float)width / (float)height, 0.1f, 1000.0f));
+        uniformData.viewInverse = glm::inverse(glm::lookAt(camZ, glm::vec3(0,0,0), glm::vec3(0, 1, 0)));
+        updateUniformBuffer(device, uniformBuffer, uniformData);
+
+        auto swapChainImageIndex = device.acquireNextImageKHR(swapChain, std::numeric_limits<uint64_t>::max(), semaphore2, {}).value;
+
+        vk::PipelineStageFlags waitStageMask = vk::PipelineStageFlagBits::eTransfer;
+
+        device.resetFences(fence);
+
+        vk::SubmitInfo submitInfo = {
+            .waitSemaphoreCount=1,
+            .pWaitSemaphores=&semaphore2,
+            .pWaitDstStageMask=&waitStageMask,
+            .commandBufferCount=1,
+            .pCommandBuffers=&commandBuffers[swapChainImageIndex],
+            .signalSemaphoreCount=1,
+            .pSignalSemaphores=&semaphore
+        };
+
+        VK_CHECK_RESULT(computePresentQueue.submit(1, &submitInfo, fence));
+
+        VK_CHECK_RESULT(device.waitForFences(1, &fence, true, UINT64_MAX));
+        device.resetFences(fence);
+
+        vk::PresentInfoKHR presentInfo = {
+            .waitSemaphoreCount=1,
+            .pWaitSemaphores=&semaphore,
+            .swapchainCount=1,
+            .pSwapchains=&swapChain,
+            .pImageIndices=&swapChainImageIndex
+        };
+
+        VK_CHECK_RESULT(computePresentQueue.presentKHR(presentInfo));
+
+        device.waitIdle();
+    }
 }
 
 std::vector<const char *> getExtensions(SDL_Window* window)
@@ -894,6 +967,94 @@ void createShaderBindingTable(vk::Device& device, vk::PhysicalDevice& physicalDe
         memcpy(sbtBufferData + baseAlignment * 2, handles.data() + handleSize * 2, handleSize);
         device.unmapMemory(shaderBindingTableBuffer.memory);
 }
+
+void prepareCommandBuffers(std::vector<vk::CommandBuffer>& commandBuffers, VulkanRaytraceStuff::VulkanImage& renderTargetImage, uint32_t queueId, vk::Pipeline& rtPipeline,
+                            vk::DescriptorSet& rtDescriptorSet, vk::PipelineLayout& rtPipelineLayout,
+                            vk::StridedDeviceAddressRegionKHR& sbtRayGenAddressRegion,
+                            vk::StridedDeviceAddressRegionKHR& sbtMissAddressRegion,
+                            vk::StridedDeviceAddressRegionKHR& sbtHitAddressRegion,
+                            const uint32_t width, const uint32_t height, vk::DispatchLoaderDynamic& dynamicDispatchLoader, std::vector<vk::Image>& swapChainImages)
+{
+    for(size_t nn = 0; nn < commandBuffers.size(); nn++)
+    {
+        vk::CommandBufferBeginInfo beginInfo = {};
+        VK_CHECK_RESULT(commandBuffers[nn].begin(&beginInfo));
+
+        // Render target image & summed pixel color image: Undefined -> General
+        vk::ImageMemoryBarrier imageBarriersToGeneral[2] = {
+            getImagePipelineBarrier(
+                vk::AccessFlagBits::eNoneKHR, vk::AccessFlagBits::eShaderWrite,
+                vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, renderTargetImage.image, queueId
+            )
+        };
+
+        commandBuffers[nn].pipelineBarrier(vk::PipelineStageFlagBits::eRayTracingShaderKHR,
+            vk::PipelineStageFlagBits::eRayTracingShaderKHR,
+            vk::DependencyFlagBits::eByRegion, 0, nullptr,
+            0, nullptr, 1, imageBarriersToGeneral);
+
+        // Ray Tracing
+        commandBuffers[nn].bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, rtPipeline);
+        
+        std::vector<vk::DescriptorSet> descriptorSets={rtDescriptorSet};
+        commandBuffers[nn].bindDescriptorSets(vk::PipelineBindPoint::eRayTracingKHR, rtPipelineLayout,
+            0, descriptorSets, nullptr);
+        
+        commandBuffers[nn].traceRaysKHR(sbtRayGenAddressRegion, sbtMissAddressRegion, sbtHitAddressRegion, {},
+            width, height, 1, dynamicDispatchLoader);
+
+        // Render target image: General -> Transfer src & swap chain image : undefined => transfor dst
+        vk::ImageMemoryBarrier imageBarriersToTransfer[2] = 
+        {
+            getImagePipelineBarrier(
+                vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eTransferRead,
+                vk::ImageLayout::eGeneral, vk::ImageLayout::eGeneral, renderTargetImage.image, queueId
+            ),
+            getImagePipelineBarrier(
+                vk::AccessFlagBits::eNoneKHR, vk::AccessFlagBits::eTransferWrite, 
+                vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, swapChainImages[nn], queueId
+            )
+        };
+
+        commandBuffers[nn].pipelineBarrier(vk::PipelineStageFlagBits::eRayTracingShaderKHR, vk::PipelineStageFlagBits::eTransfer,
+            vk::DependencyFlagBits::eByRegion, 0, nullptr, 0, nullptr, 2, imageBarriersToTransfer);
+
+        // Copy render target image to swap chainimage
+        vk::ImageSubresourceLayers subresourceLayers = {
+            .aspectMask=vk::ImageAspectFlagBits::eColor,
+            .mipLevel=0,
+            .baseArrayLayer=0,
+            .layerCount=1
+        };
+
+        vk::ImageCopy imageCopy = {
+            .srcSubresource=subresourceLayers, .srcOffset={0,0,0},
+            .dstSubresource=subresourceLayers, .dstOffset={0,0,0},
+            .extent={.width=width, .height=height, .depth=1}
+        };
+
+        commandBuffers[nn].copyImage(renderTargetImage.image, vk::ImageLayout::eGeneral, swapChainImages[nn], vk::ImageLayout::eTransferDstOptimal, 1, &imageCopy);
+
+        // Swap chain images - transfer -> present
+        vk::ImageMemoryBarrier barrierSwapChainToPresent = getImagePipelineBarrier(
+            vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eMemoryRead,
+            vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR, swapChainImages[nn], queueId
+        );
+
+        commandBuffers[nn].pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer,
+            vk::DependencyFlagBits::eByRegion, 0, nullptr,
+            0, nullptr, 1, &barrierSwapChainToPresent);
+        
+        commandBuffers[nn].end();
+    }
+}
+
+void updateUniformBuffer(vk::Device& device, VulkanRaytraceStuff::VulkanBuffer& uniformBuffer, VulkanRaytraceStuff::UniformData& uniformData)
+{
+    void* data = device.mapMemory(uniformBuffer.memory, 0, sizeof(uniformBuffer));
+    memcpy(data, &uniformData, sizeof(uniformData));
+    device.unmapMemory(uniformBuffer.memory);
+};
 
 VulkanRaytraceStuff::~VulkanRaytraceStuff()
 {
