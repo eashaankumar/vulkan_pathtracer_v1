@@ -106,7 +106,8 @@ VulkanRaytraceStuff::VulkanBuffer createBuffer(vk::PhysicalDevice& physicalDevic
         const vk::Flags<vk::MemoryPropertyFlagBits>& memoryProperty,
         const void* data);
 void BuildRTAS(vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader, vk::CommandPool& commandPool, 
-vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure& topAccelerationStructure);
+                vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure& topAccelerationStructure, VulkanRaytraceStuff::VulkanAccelerationStructure& bottomAccelerationStructure);
+
 vk::ImageView createImageView (vk::Device& device, const vk::Image& image, const vk::Format& format);
 VulkanRaytraceStuff::VulkanImage createImage(vk::Device& device, vk::PhysicalDevice& physicalDevice, const vk::Format& format,
         const vk::Flags<vk::ImageUsageFlagBits>& usageFlagBits, const uint32_t width, const uint32_t height);
@@ -125,7 +126,9 @@ void prepareCommandBuffers(std::vector<vk::CommandBuffer>& commandBuffers, Vulka
                             vk::StridedDeviceAddressRegionKHR& sbtHitAddressRegion,
                             const uint32_t width, const uint32_t height, vk::DispatchLoaderDynamic& dynamicDispatchLoader, std::vector<vk::Image>& swapChainImages);
 void updateUniformBuffer(vk::Device& device, VulkanRaytraceStuff::VulkanBuffer& uniformBuffer, VulkanRaytraceStuff::UniformData& uniformData);
-
+auto destroyBuffer(vk::Device& device, const VulkanRaytraceStuff::VulkanBuffer& buffer);
+auto destroyAccelerationStructure (vk::Device& device, const VulkanRaytraceStuff::VulkanAccelerationStructure& accelerationStructure, vk::DispatchLoaderDynamic& dynamicDispatchLoader);
+auto destroyImage(vk::Device& device, const VulkanRaytraceStuff::VulkanImage& image);
 
 void VulkanRaytraceStuff::init(const char* appname, int width, int height)
 {
@@ -160,10 +163,8 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
     commandPool = device.createCommandPool({.queueFamilyIndex=queueId});
     
 
-    VulkanRaytraceStuff::VulkanAccelerationStructure topAccelerationStructure;
-    BuildRTAS(physicalDevice, device, dynamicDispatchLoader, commandPool, computePresentQueue, topAccelerationStructure);
+    BuildRTAS(physicalDevice, device, dynamicDispatchLoader, commandPool, computePresentQueue, topAccelerationStructure, bottomAccelerationStructure);
 
-    VkSurfaceKHR surface;
     SDL_Vulkan_CreateSurface(window, instance, &surface );
 
     const uint32_t imageCount=3;
@@ -196,7 +197,7 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
     }
 
     // Create Images
-    VulkanImage renderTargetImage = createImage(device, physicalDevice, swapChainImageFormat, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc, 
+    renderTargetImage = createImage(device, physicalDevice, swapChainImageFormat, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc, 
                                                 extent.width, extent.height);
 
     // Descriptors/Bindings
@@ -228,7 +229,7 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
         .closestHitShader=2, .anyHitShader=VK_SHADER_UNUSED_KHR, .intersectionShader=VK_SHADER_UNUSED_KHR}
     };
 
-    vk::PipelineLayout rtPipelineLayout = device.createPipelineLayout( //vk::PipelineLayout
+    rtPipelineLayout = device.createPipelineLayout( //vk::PipelineLayout
     {
         .setLayoutCount=1,
         .pSetLayouts=&rtDescriptorSetLayout,
@@ -250,7 +251,7 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
         .basePipelineIndex=0
     };
 
-    vk::Pipeline rtPipeline = device.createRayTracingPipelineKHR(nullptr, nullptr, pipelineCreateInfo, nullptr, dynamicDispatchLoader).value;
+    rtPipeline = device.createRayTracingPipelineKHR(nullptr, nullptr, pipelineCreateInfo, nullptr, dynamicDispatchLoader).value;
 
     // clean up shader modules after pipeline creation
     device.destroyShaderModule(raygenModule);
@@ -274,10 +275,10 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
     prepareCommandBuffers(commandBuffers, renderTargetImage, queueId, rtPipeline, rtDescriptorSet, rtPipelineLayout, sbtRayGenAddressRegion, 
                         sbtMissAddressRegion, sbtHitAddressRegion, extent.width, extent.height, dynamicDispatchLoader, swapChainImages);
 
-    vk::Fence fence = device.createFence({});
+    fence = device.createFence({});
 
-    vk::Semaphore semaphore = device.createSemaphore({});
-    vk::Semaphore semaphore2 = device.createSemaphore({});
+    semaphore = device.createSemaphore({});
+    semaphore2 = device.createSemaphore({});
 
     float yAngle = 0;
     bool running = true;
@@ -527,7 +528,7 @@ VulkanRaytraceStuff::VulkanBuffer createBuffer(vk::PhysicalDevice& physicalDevic
 
 /// @brief Step 4
 void BuildRTAS(vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader, vk::CommandPool& commandPool, 
-vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure& topAccelerationStructure)
+vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure& topAccelerationStructure, VulkanRaytraceStuff::VulkanAccelerationStructure& bottomAccelerationStructure)
 {
     const uint32_t numTriangles = 2;
     const std::vector<VulkanRaytraceStuff::Vertex> vertices = {
@@ -592,7 +593,6 @@ vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure
         dynamicDispatchLoader
     );
 
-    VulkanRaytraceStuff::VulkanAccelerationStructure bottomAccelerationStructure;
     // Allocate buffers for acceleration structure
     bottomAccelerationStructure.structureBuffer = createBuffer(physicalDevice, device, buildSizesInfo.accelerationStructureSize,
         vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR,
@@ -1056,13 +1056,57 @@ void updateUniformBuffer(vk::Device& device, VulkanRaytraceStuff::VulkanBuffer& 
     device.unmapMemory(uniformBuffer.memory);
 };
 
+
+auto destroyBuffer(vk::Device& device, const VulkanRaytraceStuff::VulkanBuffer& buffer)
+{
+    device.destroyBuffer(buffer.buffer);
+    device.freeMemory(buffer.memory);
+};
+
+auto destroyAccelerationStructure (vk::Device& device, const VulkanRaytraceStuff::VulkanAccelerationStructure& accelerationStructure, vk::DispatchLoaderDynamic& dynamicDispatchLoader)
+{
+    device.destroyAccelerationStructureKHR(accelerationStructure.accelerationStructure, nullptr, dynamicDispatchLoader);
+    destroyBuffer(device, accelerationStructure.structureBuffer);
+    destroyBuffer(device, accelerationStructure.scratchBuffer);
+    destroyBuffer(device, accelerationStructure.instancesBuffer);
+};
+
+auto destroyImage(vk::Device& device, const VulkanRaytraceStuff::VulkanImage& image)
+{
+    device.destroyImageView(image.imageView);
+    device.destroyImage(image.image);
+    device.freeMemory(image.memory);
+};
+
 VulkanRaytraceStuff::~VulkanRaytraceStuff()
 {
     LOG("Vulkan Raytracing Stuff (Destroy)");
 
-    device.destroy();
+    // Cleanup
+    device.destroySemaphore(semaphore);
+    device.destroySemaphore(semaphore2);
+    device.destroyFence(fence);
+    device.destroyPipeline(rtPipeline);
+    device.destroyPipelineLayout(rtPipelineLayout);
+    // device.destroyDescriptorSetLayout(rtDescriptorSetLayout);
+    // device.destroyDescriptorPool(rtDescriptorPool);
 
+    destroyAccelerationStructure(device, topAccelerationStructure, dynamicDispatchLoader);
+    destroyAccelerationStructure(device, bottomAccelerationStructure, dynamicDispatchLoader);
+
+    // destroyBuffer(uniformBuffer, device);
+    // destroyBuffer(shaderBindingTableBuffer, device);
+
+    // device.destroyImageView(swapChainImageView); // todo
+    device.destroySwapchainKHR(swapChain);
+    device.destroyCommandPool(commandPool);
+
+    destroyImage(device, renderTargetImage);
+
+    device.destroy();
+    instance.destroySurfaceKHR(surface);
     instance.destroy();
+
     LOG("Vulkan Raytracing Stuff (Destroy) 2");
 }
 #endif

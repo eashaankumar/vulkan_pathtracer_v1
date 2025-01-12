@@ -32,6 +32,14 @@ public:
     vk::CommandPool commandPool;
     vk::SwapchainKHR swapChain;
 
+    VkSurfaceKHR surface;
+
+    vk::Pipeline rtPipeline;
+    vk::PipelineLayout rtPipelineLayout;
+
+    vk::Semaphore semaphore, semaphore2;
+    vk::Fence fence;
+    
     struct VulkanBuffer {
         vk::Buffer buffer;
         vk::DeviceMemory memory;
@@ -50,12 +58,16 @@ public:
         VulkanBuffer instancesBuffer;
     };
 
+    VulkanAccelerationStructure topAccelerationStructure, bottomAccelerationStructure;
+
     struct VulkanImage
     {
         vk::Image image;
         vk::DeviceMemory memory;
         vk::ImageView imageView;
     };
+
+    VulkanImage renderTargetImage;
 
     struct UniformData
     {
