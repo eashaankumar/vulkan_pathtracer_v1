@@ -3,6 +3,11 @@
 #define VULKAN_HPP_HAS_SPACESHIP_OPERATOR
 #include <vulkan/vulkan.hpp>
 
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE // configures glm to match vulkan's depth range
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
 #include <SDL2/SDL_vulkan.h>
 
 #include <vector>
@@ -25,6 +30,7 @@ public:
     vk::DispatchLoaderDynamic dynamicDispatchLoader;
     vk::Queue computePresentQueue;
     vk::CommandPool commandPool;
+    vk::SwapchainKHR swapChain;
 
     struct VulkanBuffer {
         vk::Buffer buffer;

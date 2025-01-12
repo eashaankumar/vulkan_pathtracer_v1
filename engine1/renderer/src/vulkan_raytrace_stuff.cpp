@@ -3,6 +3,7 @@
 #include <set>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
+#include <fstream>
 
 #ifdef VULKAN_RAYTRACE_STUFF
 
@@ -67,6 +68,28 @@ auto getRayQueryFeatures = [](const vk::PhysicalDevice& physicalDevice)
     physicalDevice.getFeatures2(&physicalDeviceFeatures2);
     return accRayQueryFeatures;
 };
+
+auto getImagePipelineBarrier = [](const vk::AccessFlagBits& srcAccessFlags, const vk::AccessFlagBits& dstAccessFlags,
+    const vk::ImageLayout& oldLayout, const vk::ImageLayout& newLayout,
+    const vk::Image& image, uint32_t computeQueueFamily)
+{
+    return vk::ImageMemoryBarrier{
+        .srcAccessMask=srcAccessFlags,
+        .dstAccessMask=dstAccessFlags,
+        .oldLayout=oldLayout,
+        .newLayout=newLayout,
+        .srcQueueFamilyIndex=computeQueueFamily,
+        .dstQueueFamilyIndex=computeQueueFamily,
+        .image=image,
+        .subresourceRange={
+            .aspectMask=vk::ImageAspectFlagBits::eColor,
+            .baseMipLevel=0,
+            .levelCount=1,
+            .baseArrayLayer=0,
+            .layerCount=1
+        },
+    };
+};
 #pragma endregion
 
 
@@ -87,62 +110,20 @@ vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure
 vk::ImageView createImageView (vk::Device& device, const vk::Image& image, const vk::Format& format);
 VulkanRaytraceStuff::VulkanImage createImage(vk::Device& device, vk::PhysicalDevice& physicalDevice, const vk::Format& format,
         const vk::Flags<vk::ImageUsageFlagBits>& usageFlagBits, const uint32_t width, const uint32_t height);
-
+void createDescriptor(vk::PhysicalDevice& physicalDevice, vk::Device& device, uint32_t width, uint32_t height, VulkanRaytraceStuff::VulkanImage& renderTargetImage, 
+                        VulkanRaytraceStuff::VulkanAccelerationStructure& topAccelerationStructure, vk::DescriptorSet& rtDescriptorSet,
+                        vk::DescriptorSetLayout& rtDescriptorSetLayout, VulkanRaytraceStuff::VulkanBuffer& uniformBuffer);
+vk::ShaderModule createShaderModuleFromPreCompiledSPIRV(vk::Device& device, const std::string& path);
+void createShaderBindingTable(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Pipeline& rtPipeline, vk::DispatchLoaderDynamic& dynamicDispatchLoader, 
+                            vk::StridedDeviceAddressRegionKHR& sbtRayGenAddressRegion,
+                            vk::StridedDeviceAddressRegionKHR& sbtMissAddressRegion,
+                            vk::StridedDeviceAddressRegionKHR& sbtHitAddressRegion);
 
 void VulkanRaytraceStuff::init(const char* appname, int width, int height)
 {
-    // vk::ApplicationInfo appInfo;
-    // appInfo.setPApplicationName(appname)
-    //         .setApplicationVersion(VK_MAKE_VERSION(1, 0, 0))
-    //         .setPEngineName("Engine1")
-    //         .setEngineVersion(VK_MAKE_VERSION(1, 0, 0))
-    //         .setApiVersion(VK_API_VERSION_1_2);
-
-    // vk::InstanceCreateInfo instanceCreateInfo;
-    // instanceCreateInfo.setPApplicationInfo(&appInfo);
-    // instanceCreateInfo.enabledExtensionCount = (uint32_t)requiredInstanceExtensions.size();
-    // instanceCreateInfo.ppEnabledExtensionNames = requiredInstanceExtensions.data();
-
-    // LOG("Vulkan Raytracing Stuff");
-    
-    // instance = (vk::createInstance(instanceCreateInfo));
-    // physicalDevice = (getPhysicalDevice(instance));
-    // queueId = (getQueueId(physicalDevice));
-    // LOG(queueId);
-    // device = (createLogicalDevice(queueId, physicalDevice));
-    // dynamicDispatchLoader = vk::DispatchLoaderDynamic(instance, vkGetInstanceProcAddr, device);
-    // computePresentQueue = device.getQueue(queueId, 0);
-    // commandPool = device.createCommandPool({.queueFamilyIndex=queueId});
-
-    // VulkanRaytraceStuff::VulkanAccelerationStructure topAccelerationStructure;
-    // BuildRTAS(physicalDevice, device, dynamicDispatchLoader, commandPool, computePresentQueue, topAccelerationStructure);
-
-    // VkSurfaceKHR surface;
-    // SDL_Vulkan_CreateSurface(window, instance, &surface );
-
-    // const uint32_t imageCount=3;
-    // const vk::Format swapChainImageFormat=vk::Format::eB8G8R8A8Unorm; // vk::Format::eR8G8B8A8Unorm
-
-    // LOG(width);
-
-    // // Create Swap Chain
-    // vk::SwapchainKHR swapChain = device.createSwapchainKHR(vk::SwapchainCreateInfoKHR{
-    //     .surface=surface,
-    //     .minImageCount=imageCount,
-    //     .imageFormat=swapChainImageFormat, // VK_FORMAT_B8G8R8A8_UNORM
-    //     .imageColorSpace=vk::ColorSpaceKHR::eSrgbNonlinear,
-    //     .imageExtent={.width=static_cast<uint32_t>(width), .height=static_cast<uint32_t>(height)},
-    //     .imageArrayLayers=1,
-    //     .imageUsage=vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst,
-    //     .imageSharingMode=vk::SharingMode::eExclusive,
-    //     .preTransform=physicalDevice.getSurfaceCapabilitiesKHR(surface).currentTransform,
-    //     .compositeAlpha=vk::CompositeAlphaFlagBitsKHR::eOpaque,
-    //     .presentMode=vk::PresentModeKHR::eFifo, // vk::PresentModeKHR::eImmediate
-    //     .clipped=true,
-    //     .oldSwapchain=nullptr
-    // });
-
-    // LOG("Created swap chain");
+    vk::Extent2D extent = {
+        .width=static_cast<uint32_t>(width),.height=static_cast<uint32_t>(height)
+    };
 
     // Init vulkan app info
     vk::ApplicationInfo appInfo;
@@ -157,26 +138,15 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Vulkan_LoadLibrary(nullptr);
     window = SDL_CreateWindow(appname, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_SHOWN | SDL_WINDOW_VULKAN);
-    
     std::vector<const char *> requiredInstanceExtensions = getExtensions(window);
-
     instanceCreateInfo.setPApplicationInfo(&appInfo);
     instanceCreateInfo.enabledExtensionCount = (uint32_t)requiredInstanceExtensions.size();
     instanceCreateInfo.ppEnabledExtensionNames = requiredInstanceExtensions.data();
-
     instance = (vk::createInstance(instanceCreateInfo));
-
     physicalDevice = (getPhysicalDevice(instance));
-
-
     queueId = (getQueueId(physicalDevice));
-
-
     std::cout << queueId << std::endl;
-
     device = (createLogicalDevice(queueId, physicalDevice));
-
-
     dynamicDispatchLoader = vk::DispatchLoaderDynamic(instance, vkGetInstanceProcAddr, device);
     computePresentQueue = device.getQueue(queueId, 0);
     commandPool = device.createCommandPool({.queueFamilyIndex=queueId});
@@ -191,12 +161,8 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
     const uint32_t imageCount=3;
     const vk::Format swapChainImageFormat=vk::Format::eB8G8R8A8Unorm; // vk::Format::eR8G8B8A8Unorm
 
-    vk::Extent2D extent = {
-        .width=static_cast<uint32_t>(width),.height=static_cast<uint32_t>(height)
-    };
-
     // Create Swap Chain
-    vk::SwapchainKHR swapChain = device.createSwapchainKHR(vk::SwapchainCreateInfoKHR{
+    swapChain = device.createSwapchainKHR(vk::SwapchainCreateInfoKHR{
         .surface=surface,
         .minImageCount=imageCount,
         .imageFormat=swapChainImageFormat, // VK_FORMAT_B8G8R8A8_UNORM
@@ -210,6 +176,91 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
         .presentMode=vk::PresentModeKHR::eFifo, // vk::PresentModeKHR::eImmediate
         .clipped=true,
         .oldSwapchain=nullptr
+    });
+
+    // swap chain images
+    vk::ImageView swapChainImageViews[imageCount];
+    std::vector<vk::Image> swapChainImages=device.getSwapchainImagesKHR(swapChain);
+    for(int nn = 0; nn < imageCount; nn++)
+    {
+        auto image = swapChainImages[nn];
+        swapChainImageViews[nn] = createImageView(device, image, swapChainImageFormat);
+    }
+
+    // Create Images
+    VulkanImage renderTargetImage = createImage(device, physicalDevice, swapChainImageFormat, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc, 
+                                                extent.width, extent.height);
+
+    // Descriptors/Bindings
+    vk::DescriptorSet rtDescriptorSet;
+    vk::DescriptorSetLayout rtDescriptorSetLayout;
+    VulkanBuffer uniformBuffer;
+
+    createDescriptor(physicalDevice, device, extent.width, extent.height, renderTargetImage, topAccelerationStructure, rtDescriptorSet, rtDescriptorSetLayout, uniformBuffer);
+
+
+    // Shaders
+    vk::ShaderModule raygenModule = createShaderModuleFromPreCompiledSPIRV(device, "compiled_shaders/shader.rgen.spv");
+    vk::ShaderModule chitModule = createShaderModuleFromPreCompiledSPIRV(device, "compiled_shaders/shader.rchit.spv");
+    vk::ShaderModule missModule = createShaderModuleFromPreCompiledSPIRV(device, "compiled_shaders/shader.rmiss.spv");
+
+    std::vector<vk::PipelineShaderStageCreateInfo> stages = {
+        {.stage=vk::ShaderStageFlagBits::eRaygenKHR,                .module=raygenModule,       .pName="main"},
+        {.stage=vk::ShaderStageFlagBits::eMissKHR,                  .module=missModule,         .pName="main"},
+        {.stage=vk::ShaderStageFlagBits::eClosestHitKHR,            .module=chitModule,         .pName="main"},
+    };
+
+    std::vector<vk::RayTracingShaderGroupCreateInfoKHR> groups = 
+    {
+        {.type=vk::RayTracingShaderGroupTypeKHR::eGeneral,                  .generalShader=0,
+        .closestHitShader=VK_SHADER_UNUSED_KHR, .anyHitShader=VK_SHADER_UNUSED_KHR, .intersectionShader=VK_SHADER_UNUSED_KHR},
+        {.type=vk::RayTracingShaderGroupTypeKHR::eGeneral,                  .generalShader=1,
+        .closestHitShader=VK_SHADER_UNUSED_KHR, .anyHitShader=VK_SHADER_UNUSED_KHR, .intersectionShader=VK_SHADER_UNUSED_KHR},
+        {.type=vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,      .generalShader=VK_SHADER_UNUSED_KHR,
+        .closestHitShader=2, .anyHitShader=VK_SHADER_UNUSED_KHR, .intersectionShader=VK_SHADER_UNUSED_KHR}
+    };
+
+    vk::PipelineLayout rtPipelineLayout = device.createPipelineLayout( //vk::PipelineLayout
+    {
+        .setLayoutCount=1,
+        .pSetLayouts=&rtDescriptorSetLayout,
+        .pushConstantRangeCount=0,
+        .pPushConstantRanges=nullptr
+    });
+
+    vk::PipelineLibraryCreateInfoKHR libraryCreateInfo = {.libraryCount=0};
+    vk::RayTracingPipelineCreateInfoKHR pipelineCreateInfo = {
+        .stageCount=static_cast<uint32_t>(stages.size()),
+        .pStages=stages.data(),
+        .groupCount=static_cast<uint32_t>(groups.size()),
+        .pGroups=groups.data(),
+        .maxPipelineRayRecursionDepth=getRayTracingProperties(physicalDevice).maxRayRecursionDepth,
+        .pLibraryInfo=&libraryCreateInfo,
+        .pLibraryInterface=nullptr,
+        .layout=rtPipelineLayout,
+        .basePipelineHandle=VK_NULL_HANDLE,
+        .basePipelineIndex=0
+    };
+
+    vk::Pipeline rtPipeline = device.createRayTracingPipelineKHR(nullptr, nullptr, pipelineCreateInfo, nullptr, dynamicDispatchLoader).value;
+
+    // clean up shader modules after pipeline creation
+    device.destroyShaderModule(raygenModule);
+    device.destroyShaderModule(chitModule);
+    device.destroyShaderModule(missModule);
+
+    // Create Shader Binding Table
+    vk::StridedDeviceAddressRegionKHR sbtRayGenAddressRegion;
+    vk::StridedDeviceAddressRegionKHR sbtMissAddressRegion;
+    vk::StridedDeviceAddressRegionKHR sbtHitAddressRegion;
+
+    createShaderBindingTable(device, physicalDevice, rtPipeline, dynamicDispatchLoader, sbtRayGenAddressRegion, sbtMissAddressRegion, sbtHitAddressRegion);
+
+    std::vector<vk::CommandBuffer> commandBuffers = device.allocateCommandBuffers(
+    {
+        .commandPool=commandPool,
+        .level=vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount=imageCount
     });
 }
 
@@ -711,6 +762,137 @@ VulkanRaytraceStuff::VulkanImage createImage(vk::Device& device, vk::PhysicalDev
         .memory=memory,
         .imageView=createImageView(device, image, format)
     };
+}
+
+void createDescriptor(vk::PhysicalDevice& physicalDevice, vk::Device& device, uint32_t width, uint32_t height, VulkanRaytraceStuff::VulkanImage& renderTargetImage, 
+                        VulkanRaytraceStuff::VulkanAccelerationStructure& topAccelerationStructure, vk::DescriptorSet& rtDescriptorSet,
+                        vk::DescriptorSetLayout& rtDescriptorSetLayout, VulkanRaytraceStuff::VulkanBuffer& uniformBuffer)
+{
+    struct UniformData
+    {
+        glm::mat4 viewInverse;
+        glm::mat4 projInverse;
+    };
+    UniformData uniformData{};
+    uniformData.projInverse = glm::inverse(glm::perspective(glm::radians(60.0f), (float)width/(float)height, 0.1f, 1000.0f));
+    uniformData.viewInverse = glm::inverse(glm::lookAt(glm::vec3(0.0, 0.0, -2.5), glm::vec3(0.0, 0.0, 0.0), glm::vec3(0.0, 1.0, 0.0)));
+    const vk::DeviceSize uniformBufferSize = sizeof(uniformData);
+
+    uniformBuffer=createBuffer(physicalDevice, device, uniformBufferSize, vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eDeviceLocal, &uniformData);
+
+    // Create Descriptor Set Layout
+    std::vector<vk::DescriptorSetLayoutBinding> bindings = {
+        {.binding=0, .descriptorType=vk::DescriptorType::eStorageImage, .descriptorCount=1, .stageFlags=vk::ShaderStageFlagBits::eRaygenKHR},
+        {.binding=1, .descriptorType=vk::DescriptorType::eAccelerationStructureKHR, .descriptorCount=1, .stageFlags=vk::ShaderStageFlagBits::eRaygenKHR},
+        {.binding=2, .descriptorType=vk::DescriptorType::eUniformBuffer, .descriptorCount=1, .stageFlags=vk::ShaderStageFlagBits::eRaygenKHR},
+    };
+
+    rtDescriptorSetLayout=device.createDescriptorSetLayout({.bindingCount=static_cast<uint32_t>(bindings.size()), .pBindings=bindings.data()});
+
+    // Create Descriptor Pool
+    std::vector<vk::DescriptorPoolSize> poolSizes={
+        {.type=vk::DescriptorType::eStorageImage,                   .descriptorCount=1},
+        {.type=vk::DescriptorType::eAccelerationStructureKHR,       .descriptorCount=1},
+        {.type=vk::DescriptorType::eUniformBuffer,                  .descriptorCount=1},
+    };
+
+    vk::DescriptorPool rtDescriptorPool = device.createDescriptorPool(
+    {
+        .maxSets=1,
+        .poolSizeCount=static_cast<uint32_t>(poolSizes.size()),
+        .pPoolSizes=poolSizes.data()
+    });
+
+    // Create Descriptor Set
+    rtDescriptorSet = device.allocateDescriptorSets( // vk::DescriptorSet
+    {
+        .descriptorPool=rtDescriptorPool,
+        .descriptorSetCount=1,
+        .pSetLayouts=&rtDescriptorSetLayout
+    }).front();
+
+    auto renderTargetImageInfo = vk::DescriptorImageInfo{
+        .imageView=renderTargetImage.imageView,
+        .imageLayout=vk::ImageLayout::eGeneral
+    };
+
+    auto accelerationStructureInfo = vk::WriteDescriptorSetAccelerationStructureKHR{
+        .accelerationStructureCount=1,
+        .pAccelerationStructures=&topAccelerationStructure.accelerationStructure
+    };
+
+    auto uniformBufferInfo=vk::DescriptorBufferInfo{
+        .buffer=uniformBuffer.buffer,
+        .offset=0,
+        .range=uniformBufferSize
+    };
+
+    std::vector<vk::WriteDescriptorSet> descriptorWrites = {
+        {.dstSet=rtDescriptorSet, .dstBinding=0, .dstArrayElement=0, .descriptorCount=1, 
+            .descriptorType=vk::DescriptorType::eStorageImage, .pImageInfo=&renderTargetImageInfo},
+
+        {.pNext=&accelerationStructureInfo, 
+            .dstSet=rtDescriptorSet, .dstBinding=1, .dstArrayElement=0, .descriptorCount=1, 
+            .descriptorType=vk::DescriptorType::eAccelerationStructureKHR},
+
+        {.dstSet=rtDescriptorSet, .dstBinding=2, .dstArrayElement=0, .descriptorCount=1, 
+            .descriptorType=vk::DescriptorType::eUniformBuffer, .pBufferInfo=&uniformBufferInfo},
+    };
+
+    device.updateDescriptorSets(static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+}
+
+vk::ShaderModule createShaderModuleFromPreCompiledSPIRV(vk::Device& device, const std::string& path)
+{
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (file.fail()) LOG("Failed miss shader");
+    std::streamsize fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::vector<uint32_t> rayMissShaderSource(fileSize / sizeof(uint32_t));
+
+    file.read(reinterpret_cast<char *>(rayMissShaderSource.data()),
+                    fileSize);
+
+    file.close();
+
+    vk::ShaderModuleCreateInfo createInfo{.codeSize=(uint32_t)rayMissShaderSource.size() * sizeof(uint32_t), .pCode=rayMissShaderSource.data()};
+    return device.createShaderModule(createInfo);
+}
+
+void createShaderBindingTable(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Pipeline& rtPipeline, vk::DispatchLoaderDynamic& dynamicDispatchLoader, 
+                            vk::StridedDeviceAddressRegionKHR& sbtRayGenAddressRegion,
+                            vk::StridedDeviceAddressRegionKHR& sbtMissAddressRegion,
+                            vk::StridedDeviceAddressRegionKHR& sbtHitAddressRegion)
+{
+    vk::PhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingProperties = getRayTracingProperties(physicalDevice);
+        uint32_t baseAlignment = rayTracingProperties.shaderGroupBaseAlignment;
+        uint32_t handleSize = rayTracingProperties.shaderGroupHandleSize;
+
+        const uint32_t shaderGroupCount = 3;
+        vk::DeviceSize sbtBufferSize = baseAlignment * shaderGroupCount;
+
+        VulkanRaytraceStuff::VulkanBuffer shaderBindingTableBuffer = createBuffer(physicalDevice, device, sbtBufferSize,
+        vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+        std::vector<uint8_t> handles = device.getRayTracingShaderGroupHandlesKHR<uint8_t>(rtPipeline, 0, shaderGroupCount, 
+            shaderGroupCount * handleSize,
+            dynamicDispatchLoader);
+        
+        vk::DeviceAddress sbtAddress = device.getBufferAddress({.buffer=shaderBindingTableBuffer.buffer});
+
+        sbtRayGenAddressRegion = vk::StridedDeviceAddressRegionKHR(
+            {.deviceAddress=sbtAddress + baseAlignment * 0, .stride=baseAlignment, .size=baseAlignment});
+        sbtMissAddressRegion = vk::StridedDeviceAddressRegionKHR(
+            {.deviceAddress=sbtAddress + baseAlignment * 1, .stride=baseAlignment, .size=baseAlignment});
+        sbtHitAddressRegion = vk::StridedDeviceAddressRegionKHR(
+            {.deviceAddress=sbtAddress + baseAlignment * 2, .stride=baseAlignment, .size=baseAlignment});
+
+        uint8_t* sbtBufferData = static_cast<uint8_t*>(device.mapMemory(shaderBindingTableBuffer.memory, 0, sbtBufferSize));
+        memcpy(sbtBufferData, handles.data(), handleSize);
+        memcpy(sbtBufferData + baseAlignment, handles.data() + handleSize, handleSize);
+        memcpy(sbtBufferData + baseAlignment * 2, handles.data() + handleSize * 2, handleSize);
+        device.unmapMemory(shaderBindingTableBuffer.memory);
 }
 
 VulkanRaytraceStuff::~VulkanRaytraceStuff()
