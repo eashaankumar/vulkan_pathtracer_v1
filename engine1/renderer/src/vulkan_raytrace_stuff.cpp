@@ -132,9 +132,9 @@ auto destroyImage(vk::Device& device, const VulkanRaytraceStuff::VulkanImage& im
 
 void VulkanRaytraceStuff::init(const char* appname, int width, int height)
 {
-    vk::Extent2D extent = {
+    extent = vk::Extent2D({
         .width=static_cast<uint32_t>(width),.height=static_cast<uint32_t>(height)
-    };
+    });
 
     // Init vulkan app info
     vk::ApplicationInfo appInfo;
@@ -203,9 +203,8 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
     // Descriptors/Bindings
     vk::DescriptorSet rtDescriptorSet;
     vk::DescriptorSetLayout rtDescriptorSetLayout;
-    VulkanBuffer uniformBuffer;
 
-    createDescriptor(physicalDevice, device, extent.width, extent.height, renderTargetImage, topAccelerationStructure, rtDescriptorSet, rtDescriptorSetLayout, uniformBuffer);
+    createDescriptor(physicalDevice, device, extent.width, extent.height, renderTargetImage, topAccelerationStructure, rtDescriptorSet, rtDescriptorSetLayout, cameraUniformBuffer);
 
 
     // Shaders
@@ -265,7 +264,7 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
 
     createShaderBindingTable(device, physicalDevice, rtPipeline, dynamicDispatchLoader, sbtRayGenAddressRegion, sbtMissAddressRegion, sbtHitAddressRegion);
 
-    std::vector<vk::CommandBuffer> commandBuffers = device.allocateCommandBuffers(
+    commandBuffers = device.allocateCommandBuffers(
     {
         .commandPool=commandPool,
         .level=vk::CommandBufferLevel::ePrimary,
@@ -280,6 +279,11 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
     semaphore = device.createSemaphore({});
     semaphore2 = device.createSemaphore({});
 
+
+}
+
+void VulkanRaytraceStuff::run()
+{
     float yAngle = 0;
     bool running = true;
     while (running) {
@@ -299,9 +303,9 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
         glm::vec3 camZ = glm::vec3(rotY[0][0] * dist, rotY[0][1] * dist, rotY[0][2] * dist);
 
         UniformData uniformData{};
-        uniformData.projInverse = glm::inverse(glm::perspective(glm::radians(60.0f), (float)width / (float)height, 0.1f, 1000.0f));
+        uniformData.projInverse = glm::inverse(glm::perspective(glm::radians(60.0f), (float)extent.width / (float)extent.height, 0.1f, 1000.0f));
         uniformData.viewInverse = glm::inverse(glm::lookAt(camZ, glm::vec3(0,0,0), glm::vec3(0, 1, 0)));
-        updateUniformBuffer(device, uniformBuffer, uniformData);
+        updateUniformBuffer(device, cameraUniformBuffer, uniformData);
 
         auto swapChainImageIndex = device.acquireNextImageKHR(swapChain, std::numeric_limits<uint64_t>::max(), semaphore2, {}).value;
 
@@ -1094,7 +1098,7 @@ VulkanRaytraceStuff::~VulkanRaytraceStuff()
     destroyAccelerationStructure(device, topAccelerationStructure, dynamicDispatchLoader);
     destroyAccelerationStructure(device, bottomAccelerationStructure, dynamicDispatchLoader);
 
-    // destroyBuffer(uniformBuffer, device);
+    destroyBuffer(device, cameraUniformBuffer);
     // destroyBuffer(shaderBindingTableBuffer, device);
 
     // device.destroyImageView(swapChainImageView); // todo

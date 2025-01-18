@@ -17,6 +17,7 @@ App::App()
 int App::run()
 {
     LOG("App run");
+    vulkanRayTraceStuff->run();
     return 0;
 }
 

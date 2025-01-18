@@ -19,9 +19,18 @@ class VulkanRaytraceStuff
 {
 public:
     void init(const char* appname, int width, int height);
+    void run();
     ~VulkanRaytraceStuff();
+
+    struct VulkanBuffer {
+        vk::Buffer buffer;
+        vk::DeviceMemory memory;
+        vk::DeviceAddress address;
+    };
     
+    vk::Extent2D extent;
     SDL_Window* window;
+    VulkanBuffer cameraUniformBuffer;
     std::vector<const char *> requiredInstanceExtensions;
     vk::Instance instance;
     vk::PhysicalDevice physicalDevice;
@@ -39,12 +48,8 @@ public:
 
     vk::Semaphore semaphore, semaphore2;
     vk::Fence fence;
-    
-    struct VulkanBuffer {
-        vk::Buffer buffer;
-        vk::DeviceMemory memory;
-        vk::DeviceAddress address;
-    };
+    std::vector<vk::CommandBuffer> commandBuffers;
+
 
     struct Vertex {
         float pos[3];
