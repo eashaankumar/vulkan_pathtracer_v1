@@ -305,7 +305,7 @@ void VulkanRaytraceStuff::run()
         UniformData uniformData{};
         uniformData.projInverse = glm::inverse(glm::perspective(glm::radians(60.0f), (float)extent.width / (float)extent.height, 0.1f, 1000.0f));
         uniformData.viewInverse = glm::inverse(glm::lookAt(camZ, glm::vec3(0,0,0), glm::vec3(0, 1, 0)));
-        updateUniformBuffer(device, cameraUniformBuffer, uniformData);
+        updateUniformBuffer(device, cameraUniformBuffer, uniformData); // Send update to shader (materialInstance.SetUniform(uniformData))
 
         auto swapChainImageIndex = device.acquireNextImageKHR(swapChain, std::numeric_limits<uint64_t>::max(), semaphore2, {}).value;
 
@@ -530,39 +530,23 @@ VulkanRaytraceStuff::VulkanBuffer createBuffer(vk::PhysicalDevice& physicalDevic
         };
 }
 
-/// @brief Step 4
-void BuildRTAS(vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader, vk::CommandPool& commandPool, 
-vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure& topAccelerationStructure, VulkanRaytraceStuff::VulkanAccelerationStructure& bottomAccelerationStructure)
+void Mesh::Prepare(vk::PhysicalDevice& physicalDevice, vk::Device& device)
 {
-    const uint32_t numTriangles = 2;
-    const std::vector<VulkanRaytraceStuff::Vertex> vertices = {
-        {{0, 0.5f, 0.0f}},
-        {{0.5f, 0.5f, 0.0f}},
-        {{0.5f, 0, 0.0f}},
-        {{0.0, 0, 0.0f}},
-    };
-    std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
-    uint32_t indexCount = static_cast<uint32_t>(indices.size());
-    const VkTransformMatrixKHR transformMatrix = {
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f
-    };
     const vk::BufferUsageFlags usageFlags = vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR |
         vk::BufferUsageFlagBits::eShaderDeviceAddress;
 
     const vk::MemoryPropertyFlags memoryFlags = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent | 
         vk::MemoryPropertyFlagBits::eDeviceLocal;
 
-    VulkanRaytraceStuff::VulkanBuffer vertexBuffer = createBuffer(physicalDevice, device, vertices.size() * sizeof(VulkanRaytraceStuff::Vertex), usageFlags, memoryFlags, vertices.data());
-    VulkanRaytraceStuff::VulkanBuffer indexBuffer = createBuffer(physicalDevice, device, indices.size() * sizeof(uint32_t), usageFlags, memoryFlags, indices.data());
-    VulkanRaytraceStuff::VulkanBuffer transformBuffer = createBuffer(physicalDevice, device, sizeof(VkTransformMatrixKHR), usageFlags, memoryFlags, &transformMatrix);
+    vertexBuffer = createBuffer(physicalDevice, device, vertices.size() * sizeof(VulkanRaytraceStuff::Vertex), usageFlags, memoryFlags, vertices.data());
+    indexBuffer = createBuffer(physicalDevice, device, indices.size() * sizeof(uint32_t), usageFlags, memoryFlags, indices.data());
+    transformBuffer = createBuffer(physicalDevice, device, sizeof(VkTransformMatrixKHR), usageFlags, memoryFlags, &transformMatrix);
 
-    vk::DeviceOrHostAddressConstKHR vertexBufferDeviceAddress{.deviceAddress=vertexBuffer.address};
-    vk::DeviceOrHostAddressConstKHR indexBufferDeviceAddress{.deviceAddress=indexBuffer.address};
-    vk::DeviceOrHostAddressConstKHR transformBufferDeviceAddress{.deviceAddress=transformBuffer.address};
+    vertexBufferDeviceAddress = vk::DeviceOrHostAddressConstKHR {.deviceAddress=vertexBuffer.address};
+    indexBufferDeviceAddress = vk::DeviceOrHostAddressConstKHR {.deviceAddress=indexBuffer.address};
+    transformBufferDeviceAddress = vk::DeviceOrHostAddressConstKHR {.deviceAddress=transformBuffer.address};
 
-    auto geometryBLAS = vk::AccelerationStructureGeometryKHR{
+    geometryBLAS = vk::AccelerationStructureGeometryKHR{
         .geometryType=vk::GeometryTypeKHR::eTriangles,
         .geometry=vk::AccelerationStructureGeometryDataKHR{
             vk::AccelerationStructureGeometryTrianglesDataKHR{
@@ -577,15 +561,70 @@ vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure
         },
         .flags=vk::GeometryFlagBitsKHR::eOpaque,
     };
+}
 
+
+/// @brief Step 4
+void BuildRTAS(vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader, vk::CommandPool& commandPool, 
+vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure& topAccelerationStructure, VulkanRaytraceStuff::VulkanAccelerationStructure& bottomAccelerationStructure)
+{
+    // const uint32_t numTriangles = 2;
+
+    Mesh mesh;    
+    mesh.vertices = {
+        {{0, 0.5f, 0.0f}},
+        {{0.5f, 0.5f, 0.0f}},
+        {{0.5f, 0, 0.0f}},
+        {{0.0, 0, 0.0f}},
+    };
+    mesh.indices = {0, 1, 2, 0, 2, 3};
+    // uint32_t indexCount = static_cast<uint32_t>(indices.size());
+    mesh.transformMatrix = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f
+    };
+
+    mesh.Prepare(physicalDevice, device);
+    // const vk::BufferUsageFlags usageFlags = vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR |
+    //     vk::BufferUsageFlagBits::eShaderDeviceAddress;
+
+    // const vk::MemoryPropertyFlags memoryFlags = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent | 
+    //     vk::MemoryPropertyFlagBits::eDeviceLocal;
+
+    // VulkanRaytraceStuff::VulkanBuffer vertexBuffer = createBuffer(physicalDevice, device, vertices.size() * sizeof(VulkanRaytraceStuff::Vertex), usageFlags, memoryFlags, vertices.data());
+    // VulkanRaytraceStuff::VulkanBuffer indexBuffer = createBuffer(physicalDevice, device, indices.size() * sizeof(uint32_t), usageFlags, memoryFlags, indices.data());
+    // VulkanRaytraceStuff::VulkanBuffer transformBuffer = createBuffer(physicalDevice, device, sizeof(VkTransformMatrixKHR), usageFlags, memoryFlags, &transformMatrix);
+
+    // vk::DeviceOrHostAddressConstKHR vertexBufferDeviceAddress{.deviceAddress=vertexBuffer.address};
+    // vk::DeviceOrHostAddressConstKHR indexBufferDeviceAddress{.deviceAddress=indexBuffer.address};
+    // vk::DeviceOrHostAddressConstKHR transformBufferDeviceAddress{.deviceAddress=transformBuffer.address};
+
+    // auto geometryBLAS = vk::AccelerationStructureGeometryKHR{
+    //     .geometryType=vk::GeometryTypeKHR::eTriangles,
+    //     .geometry=vk::AccelerationStructureGeometryDataKHR{
+    //         vk::AccelerationStructureGeometryTrianglesDataKHR{
+    //             .vertexFormat=vk::Format::eR32G32B32A32Sfloat,
+    //             .vertexData=vertexBufferDeviceAddress,
+    //             .vertexStride=sizeof(VulkanRaytraceStuff::Vertex),
+    //             .maxVertex=0,
+    //             .indexType=vk::IndexType::eUint32,
+    //             .indexData=indexBufferDeviceAddress,
+    //             .transformData=transformBufferDeviceAddress,
+    //         }
+    //     },
+    //     .flags=vk::GeometryFlagBitsKHR::eOpaque,
+    // };
+
+    // TODO: Maybe here is where more mesh instances go
     vk::AccelerationStructureBuildGeometryInfoKHR buildInfoBLAS = {
         .type=vk::AccelerationStructureTypeKHR::eBottomLevel,
         .flags=vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace,
         .mode=vk::BuildAccelerationStructureModeKHR::eBuild,
         .srcAccelerationStructure=nullptr,
         .dstAccelerationStructure=nullptr,
-        .geometryCount=1,
-        .pGeometries=&geometryBLAS,
+        .geometryCount=1, // # of AccelerationStructureGeometryKHR
+        .pGeometries=&mesh.geometryBLAS,
         .scratchData={}
     };
 
@@ -593,7 +632,7 @@ vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure
     vk::AccelerationStructureBuildSizesInfoKHR buildSizesInfo = device.getAccelerationStructureBuildSizesKHR(
         vk::AccelerationStructureBuildTypeKHR::eDevice,
         buildInfoBLAS,
-        numTriangles,
+        mesh.NumTriangles(),
         dynamicDispatchLoader
     );
 
@@ -624,7 +663,7 @@ vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure
     // BUILD acceleration structure
     vk::AccelerationStructureBuildRangeInfoKHR buildRangeInfoBLAS = 
     {
-        .primitiveCount=numTriangles,
+        .primitiveCount=mesh.NumTriangles(),
         .primitiveOffset=0,
         .firstVertex=0,
         .transformOffset=0
@@ -717,7 +756,7 @@ vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure
     topAccelerationStructure.accelerationStructure = device.createAccelerationStructureKHR(createInfoTLAS, nullptr, dynamicDispatchLoader);
     // instance data tlas
     vk::TransformMatrixKHR vktransformMatrix;
-    memcpy(&vktransformMatrix.matrix, &transformMatrix.matrix, sizeof(transformMatrix));
+    memcpy(&vktransformMatrix.matrix, &mesh.transformMatrix.matrix, sizeof(mesh.transformMatrix));
 
     auto accelerationStructureInstance = vk::AccelerationStructureInstanceKHR{
         .transform=vktransformMatrix,
@@ -746,7 +785,7 @@ vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure
     geometryTLAS.geometry.instances.data.deviceAddress = device.getBufferAddress({.buffer=topAccelerationStructure.instancesBuffer.buffer});
     // Build TLAS
     auto buildRangeInfoTLAS = vk::AccelerationStructureBuildRangeInfoKHR{
-        .primitiveCount=1,
+        .primitiveCount=2,
         .primitiveOffset=0,
         .firstVertex=0,
         .transformOffset=0,

@@ -80,5 +80,36 @@ public:
         glm::mat4 projInverse;
     };
 
+    
+
+};
+
+struct Mesh
+{
+    public:
+    std::vector<VulkanRaytraceStuff::Vertex> vertices;
+    std::vector<uint32_t> indices;
+    VkTransformMatrixKHR transformMatrix;
+
+    VulkanRaytraceStuff::VulkanBuffer vertexBuffer;
+    VulkanRaytraceStuff::VulkanBuffer indexBuffer;
+    VulkanRaytraceStuff::VulkanBuffer transformBuffer;
+
+    vk::DeviceOrHostAddressConstKHR vertexBufferDeviceAddress;
+    vk::DeviceOrHostAddressConstKHR indexBufferDeviceAddress;
+    vk::DeviceOrHostAddressConstKHR transformBufferDeviceAddress;
+    vk::AccelerationStructureGeometryKHR geometryBLAS;
+    
+    uint32_t NumTriangles()
+    {
+        return static_cast<uint32_t>(indices.size() / 3);
+    }
+
+    uint32_t IndexCount()
+    {
+        return static_cast<uint32_t>(indices.size());
+    }
+
+    void Prepare(vk::PhysicalDevice& physicalDevice, vk::Device& device);
 };
 #endif

@@ -5,14 +5,22 @@ APP = renderer
 
 SRCS =  ${APP}/src/*.cpp
 
-LIBSDIR = -LC:\VulkanSDK\1.3.290.0\Lib -LC:\Users\seana\dev\OpenGLLibs\Libs
+
+
+WEBGPU_WINDOWS = C:\Users\seana\dev\webgpu\hello-webgpu\dawn
+WEBGPU_MAIN = ${WEBGPU_WINDOWS}
+WEBGPU_INCLUDE= ${WEBGPU_MAIN}\inc
+WEBGPU_LIBS= ${WEBGPU_MAIN}\bin\win\x64\Release
+
+
+LIBSDIR = -LC:\VulkanSDK\1.3.290.0\Lib -LC:\Users\seana\dev\OpenGLLibs\Libs 
 
 ######
 # SDL2main must come before SDL2
 ######
 VULKAN_SHADER_LIBS = -lshadercd -lshaderc_utild -lshaderc_combinedd
-LIBS = -lvulkan-1 -lSDL2main -lSDL2 #${VULKAN_SHADER_LIBS} #-lglfw3
-HEADERS = -IC:\VulkanSDK\1.3.290.0\Include -I${APP}/headers -IC:\Users\seana\dev\OpenGLLibs\Include
+LIBS = -lvulkan-1 -lSDL2main -lSDL2  #${VULKAN_SHADER_LIBS} #-lglfw3
+HEADERS = -IC:\VulkanSDK\1.3.290.0\Include -I${APP}/headers -IC:\Users\seana\dev\OpenGLLibs\Include 
 
 
 # OBJS = ${SRCS:.cpp=.o}
@@ -40,7 +48,7 @@ app: ${APP}/src/*.cpp
 	${HEADERS} \
 	${SRCS} \
 	-L/usr/local/lib -Lstdlib ${LIBSDIR} ${LIBS} \
-	-o ${APP}
+	-o ${APP} 
 
 # example make compile_shader_spv input=app1/src/shader.rgen output=compiled_shaders/shader.rgen.spv
 compile_shader_spv: 

@@ -3,10 +3,10 @@
         {
             "name": "Win32",
             "includePath": [
-                "${workspaceFolder}/app*/**",
                 "C:\\VulkanSDK\\1.3.290.0\\Include",
                 "C:\\Users\\seana\\dev\\OpenGLLibs\\Include",
-                "${workspaceFolder}/engine*/**"
+                "${workspaceFolder}/engine*/**",
+                "C:\\Users\\seana\\dev\\webgpu\\hello-webgpu\\dawn\\inc"
             ],
             "defines": [
                 "_DEBUG",
