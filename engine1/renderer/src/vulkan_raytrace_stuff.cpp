@@ -568,8 +568,6 @@ void Mesh::Prepare(vk::PhysicalDevice& physicalDevice, vk::Device& device)
 void BuildRTAS(vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader, vk::CommandPool& commandPool, 
 vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure& topAccelerationStructure, VulkanRaytraceStuff::VulkanAccelerationStructure& bottomAccelerationStructure)
 {
-    // const uint32_t numTriangles = 2;
-
     Mesh mesh;    
     mesh.vertices = {
         {{0, 0.5f, 0.0f}},
@@ -578,43 +576,15 @@ vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure
         {{0.0, 0, 0.0f}},
     };
     mesh.indices = {0, 1, 2, 0, 2, 3};
-    // uint32_t indexCount = static_cast<uint32_t>(indices.size());
+
     mesh.transformMatrix = {
         1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f
+        0.0, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
     };
 
     mesh.Prepare(physicalDevice, device);
-    // const vk::BufferUsageFlags usageFlags = vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR |
-    //     vk::BufferUsageFlagBits::eShaderDeviceAddress;
 
-    // const vk::MemoryPropertyFlags memoryFlags = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent | 
-    //     vk::MemoryPropertyFlagBits::eDeviceLocal;
-
-    // VulkanRaytraceStuff::VulkanBuffer vertexBuffer = createBuffer(physicalDevice, device, vertices.size() * sizeof(VulkanRaytraceStuff::Vertex), usageFlags, memoryFlags, vertices.data());
-    // VulkanRaytraceStuff::VulkanBuffer indexBuffer = createBuffer(physicalDevice, device, indices.size() * sizeof(uint32_t), usageFlags, memoryFlags, indices.data());
-    // VulkanRaytraceStuff::VulkanBuffer transformBuffer = createBuffer(physicalDevice, device, sizeof(VkTransformMatrixKHR), usageFlags, memoryFlags, &transformMatrix);
-
-    // vk::DeviceOrHostAddressConstKHR vertexBufferDeviceAddress{.deviceAddress=vertexBuffer.address};
-    // vk::DeviceOrHostAddressConstKHR indexBufferDeviceAddress{.deviceAddress=indexBuffer.address};
-    // vk::DeviceOrHostAddressConstKHR transformBufferDeviceAddress{.deviceAddress=transformBuffer.address};
-
-    // auto geometryBLAS = vk::AccelerationStructureGeometryKHR{
-    //     .geometryType=vk::GeometryTypeKHR::eTriangles,
-    //     .geometry=vk::AccelerationStructureGeometryDataKHR{
-    //         vk::AccelerationStructureGeometryTrianglesDataKHR{
-    //             .vertexFormat=vk::Format::eR32G32B32A32Sfloat,
-    //             .vertexData=vertexBufferDeviceAddress,
-    //             .vertexStride=sizeof(VulkanRaytraceStuff::Vertex),
-    //             .maxVertex=0,
-    //             .indexType=vk::IndexType::eUint32,
-    //             .indexData=indexBufferDeviceAddress,
-    //             .transformData=transformBufferDeviceAddress,
-    //         }
-    //     },
-    //     .flags=vk::GeometryFlagBitsKHR::eOpaque,
-    // };
 
     // TODO: Maybe here is where more mesh instances go
     vk::AccelerationStructureBuildGeometryInfoKHR buildInfoBLAS = {
