@@ -16,6 +16,46 @@
 
 #ifndef VULKAN_RAYTRACE_STUFF
 #define VULKAN_RAYTRACE_STUFF
+
+class Shader
+{
+    public:
+    
+    enum ShaderType
+    {
+        RayGen, Miss, ClosestHit
+    };
+
+    vk::ShaderModule shaderModule;
+    ShaderType shaderType;
+    vk::PipelineShaderStageCreateInfo shaderStageCreateInfo;
+    vk::RayTracingShaderGroupCreateInfoKHR shaderGroupCreateInfo;
+    std::string path;
+    std::shared_ptr<vk::Device> device;
+
+    Shader(const Shader& shader);
+    Shader(const std::string& path, ShaderType shaderType, vk::Device& device, uint32_t shaderIndex);
+    void UnloadShaderModule();
+
+};
+
+class RayTracingPipeline
+{
+    private:
+        std::vector<Shader> shaders;
+    public:
+        std::unique_ptr<vk::Device> device;
+        vk::Pipeline pipeline;
+        vk::PipelineLayout pipelineLayout;
+
+        RayTracingPipeline(vk::Device& device);
+
+        void AddShader(const std::string& path, Shader::ShaderType shaderType);
+        void CreatePipeline(vk::PhysicalDevice& physicalDevice, vk::DescriptorSetLayout& rtDescriptorSetLayout, vk::DispatchLoaderDynamic& dynamicDispatchLoader, uint32_t maxRayRecursionDepth);
+        void DestroyPipeline();
+};
+
+
 class VulkanRaytraceStuff
 {
 public:
@@ -42,10 +82,9 @@ public:
     vk::CommandPool commandPool;
     vk::SwapchainKHR swapChain;
 
-    VkSurfaceKHR surface;
+    std::unique_ptr<RayTracingPipeline> pipeline;
 
-    vk::Pipeline rtPipeline;
-    vk::PipelineLayout rtPipelineLayout;
+    VkSurfaceKHR surface;
 
     vk::Semaphore semaphore, semaphore2;
     vk::Fence fence;
@@ -114,24 +153,4 @@ struct Mesh
     void Prepare(vk::PhysicalDevice& physicalDevice, vk::Device& device);
 };
 
-class Shader
-{
-    public:
-    
-    enum ShaderType
-    {
-        RayGen, Miss, ClosestHit
-    };
-
-    vk::ShaderModule shaderModule;
-    ShaderType shaderType;
-    vk::PipelineShaderStageCreateInfo shaderStageCreateInfo;
-    vk::RayTracingShaderGroupCreateInfoKHR shaderGroupCreateInfo;
-    std::string path;
-    std::unique_ptr<vk::Device> device;
-
-    Shader(const std::string& _p, ShaderType shaderType, vk::Device& device, uint32_t shaderIndex);
-    ~Shader();
-
-};
 #endif

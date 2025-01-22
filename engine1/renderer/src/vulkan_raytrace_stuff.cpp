@@ -94,8 +94,9 @@ auto getImagePipelineBarrier = [](const vk::AccessFlagBits& srcAccessFlags, cons
 };
 #pragma endregion
 
-
 #pragma region vulkan raytrace stuff
+
+#pragma region helpers declaration
 ///
 /// helpers
 std::vector<const char *> getExtensions(SDL_Window* window);
@@ -131,6 +132,10 @@ void updateUniformBuffer(vk::Device& device, VulkanRaytraceStuff::VulkanBuffer& 
 void destroyBuffer(vk::Device& device, const VulkanRaytraceStuff::VulkanBuffer& buffer);
 void destroyAccelerationStructure (vk::Device& device, const VulkanRaytraceStuff::VulkanAccelerationStructure& accelerationStructure, vk::DispatchLoaderDynamic& dynamicDispatchLoader);
 void destroyImage(vk::Device& device, const VulkanRaytraceStuff::VulkanImage& image);
+
+#pragma endregion
+
+#pragma region VulkanRaytraceStuff implementation
 
 void VulkanRaytraceStuff::init(const char* appname, int width, int height)
 {
@@ -209,57 +214,19 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
     createDescriptor(physicalDevice, device, extent.width, extent.height, renderTargetImage, topAccelerationStructure, rtDescriptorSet, rtDescriptorSetLayout, cameraUniformBuffer);
 
 
-    // Shaders
-    Shader rayGenShader = Shader("compiled_shaders/shader.rgen.spv", Shader::ShaderType::RayGen, device, 0);
-    Shader missShader = Shader("compiled_shaders/shader.rmiss.spv", Shader::ShaderType::Miss, device, 1);
-    Shader cHitShader = Shader("compiled_shaders/shader.rchit.spv", Shader::ShaderType::ClosestHit, device, 2);
+    pipeline = std::make_unique<RayTracingPipeline>(device);
+    pipeline->AddShader("compiled_shaders/shader.rgen.spv", Shader::ShaderType::RayGen);
+    pipeline->AddShader("compiled_shaders/shader.rmiss.spv", Shader::ShaderType::Miss);
+    pipeline->AddShader("compiled_shaders/shader.rchit.spv", Shader::ShaderType::ClosestHit);
 
-    std::vector<vk::PipelineShaderStageCreateInfo> stages = {
-        rayGenShader.shaderStageCreateInfo,
-        missShader.shaderStageCreateInfo,
-        cHitShader.shaderStageCreateInfo
-    };
-
-    std::vector<vk::RayTracingShaderGroupCreateInfoKHR> groups = 
-    {
-        rayGenShader.shaderGroupCreateInfo,
-        missShader.shaderGroupCreateInfo,
-        cHitShader.shaderGroupCreateInfo
-    };
-
-    rtPipelineLayout = device.createPipelineLayout( //vk::PipelineLayout
-    {
-        .setLayoutCount=1,
-        .pSetLayouts=&rtDescriptorSetLayout,
-        .pushConstantRangeCount=0,
-        .pPushConstantRanges=nullptr
-    });
-
-    vk::PipelineLibraryCreateInfoKHR libraryCreateInfo = {.libraryCount=0};
-    vk::RayTracingPipelineCreateInfoKHR pipelineCreateInfo = {
-        .stageCount=static_cast<uint32_t>(stages.size()),
-        .pStages=stages.data(),
-        .groupCount=static_cast<uint32_t>(groups.size()),
-        .pGroups=groups.data(),
-        .maxPipelineRayRecursionDepth=getRayTracingProperties(physicalDevice).maxRayRecursionDepth,
-        .pLibraryInfo=&libraryCreateInfo,
-        .pLibraryInterface=nullptr,
-        .layout=rtPipelineLayout,
-        .basePipelineHandle=VK_NULL_HANDLE,
-        .basePipelineIndex=0
-    };
-
-    rtPipeline = device.createRayTracingPipelineKHR(nullptr, nullptr, pipelineCreateInfo, nullptr, dynamicDispatchLoader).value;
-
-    // clean up shader modules after pipeline creation
-
+    pipeline->CreatePipeline(physicalDevice, rtDescriptorSetLayout, dynamicDispatchLoader, getRayTracingProperties(physicalDevice).maxRayRecursionDepth);
 
     // Create Shader Binding Table
     vk::StridedDeviceAddressRegionKHR sbtRayGenAddressRegion;
     vk::StridedDeviceAddressRegionKHR sbtMissAddressRegion;
     vk::StridedDeviceAddressRegionKHR sbtHitAddressRegion;
 
-    createShaderBindingTable(device, physicalDevice, rtPipeline, dynamicDispatchLoader, sbtRayGenAddressRegion, sbtMissAddressRegion, sbtHitAddressRegion);
+    createShaderBindingTable(device, physicalDevice, pipeline->pipeline, dynamicDispatchLoader, sbtRayGenAddressRegion, sbtMissAddressRegion, sbtHitAddressRegion);
 
     commandBuffers = device.allocateCommandBuffers(
     {
@@ -268,7 +235,7 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
         .commandBufferCount=imageCount
     });
 
-    prepareCommandBuffers(commandBuffers, renderTargetImage, queueId, rtPipeline, rtDescriptorSet, rtPipelineLayout, sbtRayGenAddressRegion, 
+    prepareCommandBuffers(commandBuffers, renderTargetImage, queueId, pipeline->pipeline, rtDescriptorSet, pipeline->pipelineLayout, sbtRayGenAddressRegion, 
                         sbtMissAddressRegion, sbtHitAddressRegion, extent.width, extent.height, dynamicDispatchLoader, swapChainImages);
 
     fence = device.createFence({});
@@ -287,8 +254,13 @@ VulkanRaytraceStuff::~VulkanRaytraceStuff()
     device.destroySemaphore(semaphore);
     device.destroySemaphore(semaphore2);
     device.destroyFence(fence);
-    device.destroyPipeline(rtPipeline);
-    device.destroyPipelineLayout(rtPipelineLayout);
+
+    // Moved to new class //
+    // device.destroyPipeline(rtPipeline);
+    // device.destroyPipelineLayout(rtPipelineLayout);
+    pipeline->DestroyPipeline();
+    //                    //
+
     // device.destroyDescriptorSetLayout(rtDescriptorSetLayout);
     // device.destroyDescriptorPool(rtDescriptorPool);
 
@@ -370,7 +342,9 @@ void VulkanRaytraceStuff::run()
         device.waitIdle();
     }
 }
+#pragma endregion
 
+#pragma region helpers implementation
 std::vector<const char *> getExtensions(SDL_Window* window)
 {
     std::vector<const char *> requiredInstanceExtensions = {};    
@@ -1086,9 +1060,9 @@ void destroyImage(vk::Device& device, const VulkanRaytraceStuff::VulkanImage& im
     device.destroyImage(image.image);
     device.freeMemory(image.memory);
 };
-
-
 #pragma endregion
+
+#pragma endregion //vulkan raytrace stuff
 
 #pragma region Mesh Implementation
 void Mesh::Prepare(vk::PhysicalDevice& physicalDevice, vk::Device& device)
@@ -1128,13 +1102,11 @@ void Mesh::Prepare(vk::PhysicalDevice& physicalDevice, vk::Device& device)
 #pragma region Shader Implementation
 Shader::Shader(const std::string& _p, Shader::ShaderType _st, vk::Device& _d, uint32_t shaderIndex)
 {
-    std::cout << "Creating shader " << _p << std::endl;
     path = _p;
-    device = std::make_unique<vk::Device>(_d);
+    device = std::make_shared<vk::Device>(_d);
     shaderType = _st;
 
     shaderModule = createShaderModuleFromPreCompiledSPIRV(_d,_p);
-    std::cout << "Shader created. " << std::endl;
 
     vk::ShaderStageFlagBits stageFlags;
 
@@ -1165,12 +1137,92 @@ Shader::Shader(const std::string& _p, Shader::ShaderType _st, vk::Device& _d, ui
     std::cout << "Loaded shader: " << path << std::endl;
 }
 
-Shader::~Shader()
+Shader::Shader(const Shader& other)
+{
+    path = other.path;
+    device = other.device;
+    shaderType = other.shaderType;
+
+    shaderModule = other.shaderModule;
+
+    shaderGroupCreateInfo = other.shaderGroupCreateInfo;
+    shaderStageCreateInfo =  other.shaderStageCreateInfo;
+}
+
+void Shader::UnloadShaderModule()
 {
     device->destroyShaderModule(shaderModule);
-    std::cout << "Destroyed shader: " << path << std::endl;
+    LOG("Unloaded shader module " + path);
 }
 #pragma endregion
 
+#pragma region RaytracePipeline
+RayTracingPipeline::RayTracingPipeline(vk::Device& _d)
+{
+    device = std::make_unique<vk::Device>(_d);
+    shaders = {};
+}
+
+void RayTracingPipeline::CreatePipeline(vk::PhysicalDevice& physicalDevice, vk::DescriptorSetLayout& rtDescriptorSetLayout, vk::DispatchLoaderDynamic& dynamicDispatchLoader, uint32_t maxRayRecursionDepth)
+{
+    LOG("Creating Ray Tracing Pipeline");
+
+    // prepare stages and groups
+    std::vector<vk::PipelineShaderStageCreateInfo> stages = {};
+    std::vector<vk::RayTracingShaderGroupCreateInfoKHR> groups = {};
+    for(int i = 0; i < shaders.size(); i++)
+    {
+        Shader shader = shaders[i];
+        stages.push_back(shaders[i].shaderStageCreateInfo);
+        groups.push_back(shaders[i].shaderGroupCreateInfo);
+    }
+    // prepare rt pipeline layout
+    pipelineLayout = device->createPipelineLayout( //vk::PipelineLayout
+    {
+        .setLayoutCount=1,
+        .pSetLayouts=&rtDescriptorSetLayout,
+        .pushConstantRangeCount=0,
+        .pPushConstantRanges=nullptr
+    });
+
+    vk::PipelineLibraryCreateInfoKHR libraryCreateInfo = {.libraryCount=0};
+    vk::RayTracingPipelineCreateInfoKHR pipelineCreateInfo = {
+        .stageCount=static_cast<uint32_t>(stages.size()),
+        .pStages=stages.data(),
+        .groupCount=static_cast<uint32_t>(groups.size()),
+        .pGroups=groups.data(),
+        .maxPipelineRayRecursionDepth=getRayTracingProperties(physicalDevice).maxRayRecursionDepth,
+        .pLibraryInfo=&libraryCreateInfo,
+        .pLibraryInterface=nullptr,
+        .layout=pipelineLayout,
+        .basePipelineHandle=VK_NULL_HANDLE,
+        .basePipelineIndex=0
+    };
+
+    pipeline = device->createRayTracingPipelineKHR(nullptr, nullptr, pipelineCreateInfo, nullptr, dynamicDispatchLoader).value;
+    // TODO: clean up shader modules after pipeline creation
+    for(int i = 0; i < shaders.size(); i++)
+    {
+        Shader shader = shaders[i];
+        shader.UnloadShaderModule();
+    }
+
+    LOG("Finished creating Ray Tracing Pipeline");
+}
+
+void RayTracingPipeline::AddShader(const std::string& path, Shader::ShaderType shaderType)
+{
+    shaders.push_back(Shader(path, shaderType, *device, shaders.size()));
+    LOG("Adding shader to ray tracing pipeline: " + path);
+}
+
+void RayTracingPipeline::DestroyPipeline()
+{
+    LOG("Destroying Ray Tracing Pipeline");
+    device->destroyPipeline(pipeline);
+    device->destroyPipelineLayout(pipelineLayout);
+    LOG("Finished destroying Ray Tracing Pipeline");
+}
+#pragma endregion
 
 #endif
