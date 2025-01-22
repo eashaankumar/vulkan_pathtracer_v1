@@ -113,4 +113,25 @@ struct Mesh
 
     void Prepare(vk::PhysicalDevice& physicalDevice, vk::Device& device);
 };
+
+class Shader
+{
+    public:
+    
+    enum ShaderType
+    {
+        RayGen, Miss, ClosestHit
+    };
+
+    vk::ShaderModule shaderModule;
+    ShaderType shaderType;
+    vk::PipelineShaderStageCreateInfo shaderStageCreateInfo;
+    vk::RayTracingShaderGroupCreateInfoKHR shaderGroupCreateInfo;
+    std::string path;
+    std::unique_ptr<vk::Device> device;
+
+    Shader(const std::string& _p, ShaderType shaderType, vk::Device& device, uint32_t shaderIndex);
+    ~Shader();
+
+};
 #endif

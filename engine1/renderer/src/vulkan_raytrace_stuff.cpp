@@ -4,6 +4,8 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
 #include <fstream>
+#include <exception>
+#include <string>
 
 #ifdef VULKAN_RAYTRACE_STUFF
 
@@ -93,7 +95,7 @@ auto getImagePipelineBarrier = [](const vk::AccessFlagBits& srcAccessFlags, cons
 #pragma endregion
 
 
-
+#pragma region vulkan raytrace stuff
 ///
 /// helpers
 std::vector<const char *> getExtensions(SDL_Window* window);
@@ -126,9 +128,9 @@ void prepareCommandBuffers(std::vector<vk::CommandBuffer>& commandBuffers, Vulka
                             vk::StridedDeviceAddressRegionKHR& sbtHitAddressRegion,
                             const uint32_t width, const uint32_t height, vk::DispatchLoaderDynamic& dynamicDispatchLoader, std::vector<vk::Image>& swapChainImages);
 void updateUniformBuffer(vk::Device& device, VulkanRaytraceStuff::VulkanBuffer& uniformBuffer, VulkanRaytraceStuff::UniformData& uniformData);
-auto destroyBuffer(vk::Device& device, const VulkanRaytraceStuff::VulkanBuffer& buffer);
-auto destroyAccelerationStructure (vk::Device& device, const VulkanRaytraceStuff::VulkanAccelerationStructure& accelerationStructure, vk::DispatchLoaderDynamic& dynamicDispatchLoader);
-auto destroyImage(vk::Device& device, const VulkanRaytraceStuff::VulkanImage& image);
+void destroyBuffer(vk::Device& device, const VulkanRaytraceStuff::VulkanBuffer& buffer);
+void destroyAccelerationStructure (vk::Device& device, const VulkanRaytraceStuff::VulkanAccelerationStructure& accelerationStructure, vk::DispatchLoaderDynamic& dynamicDispatchLoader);
+void destroyImage(vk::Device& device, const VulkanRaytraceStuff::VulkanImage& image);
 
 void VulkanRaytraceStuff::init(const char* appname, int width, int height)
 {
@@ -208,24 +210,21 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
 
 
     // Shaders
-    vk::ShaderModule raygenModule = createShaderModuleFromPreCompiledSPIRV(device, "compiled_shaders/shader.rgen.spv");
-    vk::ShaderModule chitModule = createShaderModuleFromPreCompiledSPIRV(device, "compiled_shaders/shader.rchit.spv");
-    vk::ShaderModule missModule = createShaderModuleFromPreCompiledSPIRV(device, "compiled_shaders/shader.rmiss.spv");
+    Shader rayGenShader = Shader("compiled_shaders/shader.rgen.spv", Shader::ShaderType::RayGen, device, 0);
+    Shader missShader = Shader("compiled_shaders/shader.rmiss.spv", Shader::ShaderType::Miss, device, 1);
+    Shader cHitShader = Shader("compiled_shaders/shader.rchit.spv", Shader::ShaderType::ClosestHit, device, 2);
 
     std::vector<vk::PipelineShaderStageCreateInfo> stages = {
-        {.stage=vk::ShaderStageFlagBits::eRaygenKHR,                .module=raygenModule,       .pName="main"},
-        {.stage=vk::ShaderStageFlagBits::eMissKHR,                  .module=missModule,         .pName="main"},
-        {.stage=vk::ShaderStageFlagBits::eClosestHitKHR,            .module=chitModule,         .pName="main"},
+        rayGenShader.shaderStageCreateInfo,
+        missShader.shaderStageCreateInfo,
+        cHitShader.shaderStageCreateInfo
     };
 
     std::vector<vk::RayTracingShaderGroupCreateInfoKHR> groups = 
     {
-        {.type=vk::RayTracingShaderGroupTypeKHR::eGeneral,                  .generalShader=0,
-        .closestHitShader=VK_SHADER_UNUSED_KHR, .anyHitShader=VK_SHADER_UNUSED_KHR, .intersectionShader=VK_SHADER_UNUSED_KHR},
-        {.type=vk::RayTracingShaderGroupTypeKHR::eGeneral,                  .generalShader=1,
-        .closestHitShader=VK_SHADER_UNUSED_KHR, .anyHitShader=VK_SHADER_UNUSED_KHR, .intersectionShader=VK_SHADER_UNUSED_KHR},
-        {.type=vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,      .generalShader=VK_SHADER_UNUSED_KHR,
-        .closestHitShader=2, .anyHitShader=VK_SHADER_UNUSED_KHR, .intersectionShader=VK_SHADER_UNUSED_KHR}
+        rayGenShader.shaderGroupCreateInfo,
+        missShader.shaderGroupCreateInfo,
+        cHitShader.shaderGroupCreateInfo
     };
 
     rtPipelineLayout = device.createPipelineLayout( //vk::PipelineLayout
@@ -253,9 +252,7 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
     rtPipeline = device.createRayTracingPipelineKHR(nullptr, nullptr, pipelineCreateInfo, nullptr, dynamicDispatchLoader).value;
 
     // clean up shader modules after pipeline creation
-    device.destroyShaderModule(raygenModule);
-    device.destroyShaderModule(chitModule);
-    device.destroyShaderModule(missModule);
+
 
     // Create Shader Binding Table
     vk::StridedDeviceAddressRegionKHR sbtRayGenAddressRegion;
@@ -280,6 +277,38 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
     semaphore2 = device.createSemaphore({});
 
 
+}
+
+VulkanRaytraceStuff::~VulkanRaytraceStuff()
+{
+    LOG("Vulkan Raytracing Stuff (Destroy)");
+
+    // Cleanup
+    device.destroySemaphore(semaphore);
+    device.destroySemaphore(semaphore2);
+    device.destroyFence(fence);
+    device.destroyPipeline(rtPipeline);
+    device.destroyPipelineLayout(rtPipelineLayout);
+    // device.destroyDescriptorSetLayout(rtDescriptorSetLayout);
+    // device.destroyDescriptorPool(rtDescriptorPool);
+
+    destroyAccelerationStructure(device, topAccelerationStructure, dynamicDispatchLoader);
+    destroyAccelerationStructure(device, bottomAccelerationStructure, dynamicDispatchLoader);
+
+    destroyBuffer(device, cameraUniformBuffer);
+    // destroyBuffer(shaderBindingTableBuffer, device);
+
+    // device.destroyImageView(swapChainImageView); // todo
+    device.destroySwapchainKHR(swapChain);
+    device.destroyCommandPool(commandPool);
+
+    destroyImage(device, renderTargetImage);
+
+    device.destroy();
+    instance.destroySurfaceKHR(surface);
+    instance.destroy();
+
+    LOG("Vulkan Raytracing Stuff (Destroy) 2");
 }
 
 void VulkanRaytraceStuff::run()
@@ -528,39 +557,6 @@ VulkanRaytraceStuff::VulkanBuffer createBuffer(vk::PhysicalDevice& physicalDevic
             .memory=memory,
             .address = device.getBufferAddress({.buffer=buffer})
         };
-}
-
-void Mesh::Prepare(vk::PhysicalDevice& physicalDevice, vk::Device& device)
-{
-    const vk::BufferUsageFlags usageFlags = vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR |
-        vk::BufferUsageFlagBits::eShaderDeviceAddress;
-
-    const vk::MemoryPropertyFlags memoryFlags = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent | 
-        vk::MemoryPropertyFlagBits::eDeviceLocal;
-
-    vertexBuffer = createBuffer(physicalDevice, device, vertices.size() * sizeof(VulkanRaytraceStuff::Vertex), usageFlags, memoryFlags, vertices.data());
-    indexBuffer = createBuffer(physicalDevice, device, indices.size() * sizeof(uint32_t), usageFlags, memoryFlags, indices.data());
-    transformBuffer = createBuffer(physicalDevice, device, sizeof(VkTransformMatrixKHR), usageFlags, memoryFlags, &transformMatrix);
-
-    vertexBufferDeviceAddress = vk::DeviceOrHostAddressConstKHR {.deviceAddress=vertexBuffer.address};
-    indexBufferDeviceAddress = vk::DeviceOrHostAddressConstKHR {.deviceAddress=indexBuffer.address};
-    transformBufferDeviceAddress = vk::DeviceOrHostAddressConstKHR {.deviceAddress=transformBuffer.address};
-
-    geometryBLAS = vk::AccelerationStructureGeometryKHR{
-        .geometryType=vk::GeometryTypeKHR::eTriangles,
-        .geometry=vk::AccelerationStructureGeometryDataKHR{
-            vk::AccelerationStructureGeometryTrianglesDataKHR{
-                .vertexFormat=vk::Format::eR32G32B32A32Sfloat,
-                .vertexData=vertexBufferDeviceAddress,
-                .vertexStride=sizeof(VulkanRaytraceStuff::Vertex),
-                .maxVertex=0,
-                .indexType=vk::IndexType::eUint32,
-                .indexData=indexBufferDeviceAddress,
-                .transformData=transformBufferDeviceAddress,
-            }
-        },
-        .flags=vk::GeometryFlagBitsKHR::eOpaque,
-    };
 }
 
 
@@ -1070,13 +1066,13 @@ void updateUniformBuffer(vk::Device& device, VulkanRaytraceStuff::VulkanBuffer& 
 };
 
 
-auto destroyBuffer(vk::Device& device, const VulkanRaytraceStuff::VulkanBuffer& buffer)
+void destroyBuffer(vk::Device& device, const VulkanRaytraceStuff::VulkanBuffer& buffer)
 {
     device.destroyBuffer(buffer.buffer);
     device.freeMemory(buffer.memory);
 };
 
-auto destroyAccelerationStructure (vk::Device& device, const VulkanRaytraceStuff::VulkanAccelerationStructure& accelerationStructure, vk::DispatchLoaderDynamic& dynamicDispatchLoader)
+void destroyAccelerationStructure (vk::Device& device, const VulkanRaytraceStuff::VulkanAccelerationStructure& accelerationStructure, vk::DispatchLoaderDynamic& dynamicDispatchLoader)
 {
     device.destroyAccelerationStructureKHR(accelerationStructure.accelerationStructure, nullptr, dynamicDispatchLoader);
     destroyBuffer(device, accelerationStructure.structureBuffer);
@@ -1084,42 +1080,97 @@ auto destroyAccelerationStructure (vk::Device& device, const VulkanRaytraceStuff
     destroyBuffer(device, accelerationStructure.instancesBuffer);
 };
 
-auto destroyImage(vk::Device& device, const VulkanRaytraceStuff::VulkanImage& image)
+void destroyImage(vk::Device& device, const VulkanRaytraceStuff::VulkanImage& image)
 {
     device.destroyImageView(image.imageView);
     device.destroyImage(image.image);
     device.freeMemory(image.memory);
 };
 
-VulkanRaytraceStuff::~VulkanRaytraceStuff()
+
+#pragma endregion
+
+#pragma region Mesh Implementation
+void Mesh::Prepare(vk::PhysicalDevice& physicalDevice, vk::Device& device)
 {
-    LOG("Vulkan Raytracing Stuff (Destroy)");
+    const vk::BufferUsageFlags usageFlags = vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR |
+        vk::BufferUsageFlagBits::eShaderDeviceAddress;
 
-    // Cleanup
-    device.destroySemaphore(semaphore);
-    device.destroySemaphore(semaphore2);
-    device.destroyFence(fence);
-    device.destroyPipeline(rtPipeline);
-    device.destroyPipelineLayout(rtPipelineLayout);
-    // device.destroyDescriptorSetLayout(rtDescriptorSetLayout);
-    // device.destroyDescriptorPool(rtDescriptorPool);
+    const vk::MemoryPropertyFlags memoryFlags = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent | 
+        vk::MemoryPropertyFlagBits::eDeviceLocal;
 
-    destroyAccelerationStructure(device, topAccelerationStructure, dynamicDispatchLoader);
-    destroyAccelerationStructure(device, bottomAccelerationStructure, dynamicDispatchLoader);
+    vertexBuffer = createBuffer(physicalDevice, device, vertices.size() * sizeof(VulkanRaytraceStuff::Vertex), usageFlags, memoryFlags, vertices.data());
+    indexBuffer = createBuffer(physicalDevice, device, indices.size() * sizeof(uint32_t), usageFlags, memoryFlags, indices.data());
+    transformBuffer = createBuffer(physicalDevice, device, sizeof(VkTransformMatrixKHR), usageFlags, memoryFlags, &transformMatrix);
 
-    destroyBuffer(device, cameraUniformBuffer);
-    // destroyBuffer(shaderBindingTableBuffer, device);
+    vertexBufferDeviceAddress = vk::DeviceOrHostAddressConstKHR {.deviceAddress=vertexBuffer.address};
+    indexBufferDeviceAddress = vk::DeviceOrHostAddressConstKHR {.deviceAddress=indexBuffer.address};
+    transformBufferDeviceAddress = vk::DeviceOrHostAddressConstKHR {.deviceAddress=transformBuffer.address};
 
-    // device.destroyImageView(swapChainImageView); // todo
-    device.destroySwapchainKHR(swapChain);
-    device.destroyCommandPool(commandPool);
-
-    destroyImage(device, renderTargetImage);
-
-    device.destroy();
-    instance.destroySurfaceKHR(surface);
-    instance.destroy();
-
-    LOG("Vulkan Raytracing Stuff (Destroy) 2");
+    geometryBLAS = vk::AccelerationStructureGeometryKHR{
+        .geometryType=vk::GeometryTypeKHR::eTriangles,
+        .geometry=vk::AccelerationStructureGeometryDataKHR{
+            vk::AccelerationStructureGeometryTrianglesDataKHR{
+                .vertexFormat=vk::Format::eR32G32B32A32Sfloat,
+                .vertexData=vertexBufferDeviceAddress,
+                .vertexStride=sizeof(VulkanRaytraceStuff::Vertex),
+                .maxVertex=0,
+                .indexType=vk::IndexType::eUint32,
+                .indexData=indexBufferDeviceAddress,
+                .transformData=transformBufferDeviceAddress,
+            }
+        },
+        .flags=vk::GeometryFlagBitsKHR::eOpaque,
+    };
 }
+#pragma endregion
+
+#pragma region Shader Implementation
+Shader::Shader(const std::string& _p, Shader::ShaderType _st, vk::Device& _d, uint32_t shaderIndex)
+{
+    std::cout << "Creating shader " << _p << std::endl;
+    path = _p;
+    device = std::make_unique<vk::Device>(_d);
+    shaderType = _st;
+
+    shaderModule = createShaderModuleFromPreCompiledSPIRV(_d,_p);
+    std::cout << "Shader created. " << std::endl;
+
+    vk::ShaderStageFlagBits stageFlags;
+
+    switch(shaderType)
+    {
+        case Shader::ShaderType::RayGen:
+            stageFlags = vk::ShaderStageFlagBits::eRaygenKHR;
+            shaderGroupCreateInfo = {.type=vk::RayTracingShaderGroupTypeKHR::eGeneral,                  .generalShader=shaderIndex,
+                                    .closestHitShader=VK_SHADER_UNUSED_KHR, .anyHitShader=VK_SHADER_UNUSED_KHR, .intersectionShader=VK_SHADER_UNUSED_KHR};
+        break;
+        case Shader::ShaderType::ClosestHit:
+            stageFlags = vk::ShaderStageFlagBits::eClosestHitKHR;
+            shaderGroupCreateInfo = {.type=vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,      .generalShader=VK_SHADER_UNUSED_KHR,
+                                    .closestHitShader=shaderIndex, .anyHitShader=VK_SHADER_UNUSED_KHR, .intersectionShader=VK_SHADER_UNUSED_KHR};
+        break;
+        case Shader::ShaderType::Miss:
+            stageFlags = vk::ShaderStageFlagBits::eMissKHR;
+            shaderGroupCreateInfo = {.type=vk::RayTracingShaderGroupTypeKHR::eGeneral,                  .generalShader=shaderIndex,
+                                    .closestHitShader=VK_SHADER_UNUSED_KHR, .anyHitShader=VK_SHADER_UNUSED_KHR, .intersectionShader=VK_SHADER_UNUSED_KHR};
+        break;
+        default:
+            std::cerr << "Unknown shader type" << std::endl;
+            throw std::runtime_error("Unknown Shader Type");
+    }
+
+    shaderStageCreateInfo =  {.stage=stageFlags, .module=shaderModule, .pName="main"};
+
+    std::cout << "Loaded shader: " << path << std::endl;
+}
+
+Shader::~Shader()
+{
+    device->destroyShaderModule(shaderModule);
+    std::cout << "Destroyed shader: " << path << std::endl;
+}
+#pragma endregion
+
+
 #endif
