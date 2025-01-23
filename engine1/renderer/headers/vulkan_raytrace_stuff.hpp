@@ -117,6 +117,7 @@ public:
     std::vector<vk::CommandBuffer> commandBuffers;
 
     VulkanAccelerationStructure topAccelerationStructure, bottomAccelerationStructure;
+    // RayTracingAccelerationStructure rayTracingAccelerationStructure;
 
     VulkanImage renderTargetImage;
 };
@@ -152,13 +153,22 @@ struct Mesh
 
 class RayTracingAccelerationStructure
 {
+    private:
+    struct RTASData
+    {
+        Mesh& mesh;
+        VulkanAccelerationStructure topAccelerationStructure, bottomAccelerationStructure;
+    };
+
+    std::vector<RTASData> rtasDatas;
+
     public:
     RayTracingAccelerationStructure();
 
-    void AddMesh(Mesh& mesh, glm::mat4 trs);
-    void Build();
+    void AddMesh(Mesh& mesh, vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader, vk::CommandPool& commandPool, 
+            vk::Queue& computePresentQueue);
     void Clear();
-    void Destroy();
+    void Destroy(vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader);
 };
 
 #endif

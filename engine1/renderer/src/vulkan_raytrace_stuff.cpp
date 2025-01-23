@@ -108,7 +108,7 @@ VulkanBuffer createBuffer(vk::PhysicalDevice& physicalDevice, vk::Device& device
         const vk::Flags<vk::BufferUsageFlagBits>& usage,
         const vk::Flags<vk::MemoryPropertyFlagBits>& memoryProperty,
         const void* data);
-void BuildRTAS(vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader, vk::CommandPool& commandPool, 
+void BuildRTAS(Mesh& mesh, vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader, vk::CommandPool& commandPool, 
                 vk::Queue& computePresentQueue, VulkanAccelerationStructure& topAccelerationStructure, VulkanAccelerationStructure& bottomAccelerationStructure);
 
 vk::ImageView createImageView (vk::Device& device, const vk::Image& image, const vk::Format& format);
@@ -169,8 +169,28 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
     computePresentQueue = device.getQueue(queueId, 0);
     commandPool = device.createCommandPool({.queueFamilyIndex=queueId});
     
+    #pragma region RTAS
+    Mesh mesh;    
+    mesh.vertices = {
+        {{0, 0.5f, 0.0f}},
+        {{0.5f, 0.5f, 0.0f}},
+        {{0.5f, 0, 0.0f}},
+        {{0.0, 0, 0.0f}},
+    };
+    mesh.indices = {0, 1, 2, 0, 2, 3};
 
-    BuildRTAS(physicalDevice, device, dynamicDispatchLoader, commandPool, computePresentQueue, topAccelerationStructure, bottomAccelerationStructure);
+    mesh.transformMatrix = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+    };
+
+    mesh.Prepare(physicalDevice, device);
+
+    // rayTracingAccelerationStructure = RayTracingAccelerationStructure();
+    // rayTracingAccelerationStructure.AddMesh(mesh, physicalDevice, device, dynamicDispatchLoader, commandPool, computePresentQueue);
+    BuildRTAS(mesh, physicalDevice, device, dynamicDispatchLoader, commandPool, computePresentQueue, topAccelerationStructure, bottomAccelerationStructure);
+    #pragma endregion
 
     SDL_Vulkan_CreateSurface(window, instance, &surface );
 
@@ -254,7 +274,7 @@ VulkanRaytraceStuff::~VulkanRaytraceStuff()
     device.destroySemaphore(semaphore2);
     device.destroyFence(fence);
 
-    // Moved to new class //
+    //** Moved to new class *//
     // device.destroyPipeline(rtPipeline);
     // device.destroyPipelineLayout(rtPipelineLayout);
     pipeline->DestroyPipeline();
@@ -263,8 +283,10 @@ VulkanRaytraceStuff::~VulkanRaytraceStuff()
     // device.destroyDescriptorSetLayout(rtDescriptorSetLayout);
     // device.destroyDescriptorPool(rtDescriptorPool);
 
+    //** moved to new class */
     destroyAccelerationStructure(device, topAccelerationStructure, dynamicDispatchLoader);
     destroyAccelerationStructure(device, bottomAccelerationStructure, dynamicDispatchLoader);
+    // rayTracingAccelerationStructure.Destroy(device, dynamicDispatchLoader);
 
     destroyBuffer(device, cameraUniformBuffer);
     // destroyBuffer(shaderBindingTableBuffer, device);
@@ -534,26 +556,9 @@ VulkanBuffer createBuffer(vk::PhysicalDevice& physicalDevice, vk::Device& device
 
 
 /// @brief Step 4
-void BuildRTAS(vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader, vk::CommandPool& commandPool, 
+void BuildRTAS(Mesh& mesh, vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader, vk::CommandPool& commandPool, 
 vk::Queue& computePresentQueue, VulkanAccelerationStructure& topAccelerationStructure, VulkanAccelerationStructure& bottomAccelerationStructure)
 {
-    Mesh mesh;    
-    mesh.vertices = {
-        {{0, 0.5f, 0.0f}},
-        {{0.5f, 0.5f, 0.0f}},
-        {{0.5f, 0, 0.0f}},
-        {{0.0, 0, 0.0f}},
-    };
-    mesh.indices = {0, 1, 2, 0, 2, 3};
-
-    mesh.transformMatrix = {
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-    };
-
-    mesh.Prepare(physicalDevice, device);
-
     std::vector<vk::AccelerationStructureGeometryKHR> geometries;
 
     geometries.push_back(mesh.geometryBLAS);
@@ -1225,6 +1230,35 @@ void RayTracingPipeline::DestroyPipeline()
     device->destroyPipeline(pipeline);
     device->destroyPipelineLayout(pipelineLayout);
     LOG("Finished destroying Ray Tracing Pipeline");
+}
+#pragma endregion
+
+#pragma region Ray Tracing Acceleration Structure implementation
+RayTracingAccelerationStructure::RayTracingAccelerationStructure()
+{
+}
+
+void RayTracingAccelerationStructure::AddMesh(Mesh& mesh, vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader, vk::CommandPool& commandPool, 
+                                            vk::Queue& computePresentQueue)
+{
+    VulkanAccelerationStructure topAS, botAS;
+    BuildRTAS(mesh, physicalDevice, device, dynamicDispatchLoader, commandPool, computePresentQueue, topAS, botAS);
+    RTASData data = {.mesh=mesh, .topAccelerationStructure=topAS, .bottomAccelerationStructure=botAS};
+    rtasDatas.push_back(data);
+}
+
+void RayTracingAccelerationStructure::Clear()
+{
+    rtasDatas.clear();
+}
+
+void RayTracingAccelerationStructure::Destroy(vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader)
+{
+    for(int i =0; i < rtasDatas.size(); i++)
+    {
+        destroyAccelerationStructure(device, rtasDatas[i].bottomAccelerationStructure, dynamicDispatchLoader);
+        destroyAccelerationStructure(device, rtasDatas[i].topAccelerationStructure, dynamicDispatchLoader);
+    }
 }
 #pragma endregion
 
