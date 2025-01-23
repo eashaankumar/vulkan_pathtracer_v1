@@ -104,34 +104,34 @@ vk::PhysicalDevice getPhysicalDevice(vk::Instance& instance);
 uint32_t getQueueId(vk::PhysicalDevice& physicalDevice);
 vk::Device createLogicalDevice(uint32_t queueId, vk::PhysicalDevice& physicalDevice);
 uint32_t findMemoryTypeIndex(vk::PhysicalDevice& physicalDevice, const uint32_t& memoryTypeBits, const vk::MemoryPropertyFlags& properties);
-VulkanRaytraceStuff::VulkanBuffer createBuffer(vk::PhysicalDevice& physicalDevice, vk::Device& device, const vk::DeviceSize& size,
+VulkanBuffer createBuffer(vk::PhysicalDevice& physicalDevice, vk::Device& device, const vk::DeviceSize& size,
         const vk::Flags<vk::BufferUsageFlagBits>& usage,
         const vk::Flags<vk::MemoryPropertyFlagBits>& memoryProperty,
         const void* data);
 void BuildRTAS(vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader, vk::CommandPool& commandPool, 
-                vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure& topAccelerationStructure, VulkanRaytraceStuff::VulkanAccelerationStructure& bottomAccelerationStructure);
+                vk::Queue& computePresentQueue, VulkanAccelerationStructure& topAccelerationStructure, VulkanAccelerationStructure& bottomAccelerationStructure);
 
 vk::ImageView createImageView (vk::Device& device, const vk::Image& image, const vk::Format& format);
-VulkanRaytraceStuff::VulkanImage createImage(vk::Device& device, vk::PhysicalDevice& physicalDevice, const vk::Format& format,
+VulkanImage createImage(vk::Device& device, vk::PhysicalDevice& physicalDevice, const vk::Format& format,
         const vk::Flags<vk::ImageUsageFlagBits>& usageFlagBits, const uint32_t width, const uint32_t height);
-void createDescriptor(vk::PhysicalDevice& physicalDevice, vk::Device& device, uint32_t width, uint32_t height, VulkanRaytraceStuff::VulkanImage& renderTargetImage, 
-                        VulkanRaytraceStuff::VulkanAccelerationStructure& topAccelerationStructure, vk::DescriptorSet& rtDescriptorSet,
-                        vk::DescriptorSetLayout& rtDescriptorSetLayout, VulkanRaytraceStuff::VulkanBuffer& uniformBuffer);
+void createDescriptor(vk::PhysicalDevice& physicalDevice, vk::Device& device, uint32_t width, uint32_t height, VulkanImage& renderTargetImage, 
+                        VulkanAccelerationStructure& topAccelerationStructure, vk::DescriptorSet& rtDescriptorSet,
+                        vk::DescriptorSetLayout& rtDescriptorSetLayout, VulkanBuffer& uniformBuffer);
 vk::ShaderModule createShaderModuleFromPreCompiledSPIRV(vk::Device& device, const std::string& path);
 void createShaderBindingTable(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Pipeline& rtPipeline, vk::DispatchLoaderDynamic& dynamicDispatchLoader, 
                             vk::StridedDeviceAddressRegionKHR& sbtRayGenAddressRegion,
                             vk::StridedDeviceAddressRegionKHR& sbtMissAddressRegion,
                             vk::StridedDeviceAddressRegionKHR& sbtHitAddressRegion);
-void prepareCommandBuffers(std::vector<vk::CommandBuffer>& commandBuffers, VulkanRaytraceStuff::VulkanImage& renderTargetImage, uint32_t queueId, vk::Pipeline& rtPipeline,
+void prepareCommandBuffers(std::vector<vk::CommandBuffer>& commandBuffers, VulkanImage& renderTargetImage, uint32_t queueId, vk::Pipeline& rtPipeline,
                             vk::DescriptorSet& rtDescriptorSet, vk::PipelineLayout& rtPipelineLayout,
                             vk::StridedDeviceAddressRegionKHR& sbtRayGenAddressRegion,
                             vk::StridedDeviceAddressRegionKHR& sbtMissAddressRegion,
                             vk::StridedDeviceAddressRegionKHR& sbtHitAddressRegion,
                             const uint32_t width, const uint32_t height, vk::DispatchLoaderDynamic& dynamicDispatchLoader, std::vector<vk::Image>& swapChainImages);
-void updateUniformBuffer(vk::Device& device, VulkanRaytraceStuff::VulkanBuffer& uniformBuffer, VulkanRaytraceStuff::UniformData& uniformData);
-void destroyBuffer(vk::Device& device, const VulkanRaytraceStuff::VulkanBuffer& buffer);
-void destroyAccelerationStructure (vk::Device& device, const VulkanRaytraceStuff::VulkanAccelerationStructure& accelerationStructure, vk::DispatchLoaderDynamic& dynamicDispatchLoader);
-void destroyImage(vk::Device& device, const VulkanRaytraceStuff::VulkanImage& image);
+void updateUniformBuffer(vk::Device& device, VulkanBuffer& uniformBuffer, UniformData& uniformData);
+void destroyBuffer(vk::Device& device, const VulkanBuffer& buffer);
+void destroyAccelerationStructure (vk::Device& device, const VulkanAccelerationStructure& accelerationStructure, vk::DispatchLoaderDynamic& dynamicDispatchLoader);
+void destroyImage(vk::Device& device, const VulkanImage& image);
 
 #pragma endregion
 
@@ -218,7 +218,6 @@ void VulkanRaytraceStuff::init(const char* appname, int width, int height)
     pipeline->AddShader("compiled_shaders/shader.rgen.spv", Shader::ShaderType::RayGen);
     pipeline->AddShader("compiled_shaders/shader.rmiss.spv", Shader::ShaderType::Miss);
     pipeline->AddShader("compiled_shaders/shader.rchit.spv", Shader::ShaderType::ClosestHit);
-
     pipeline->CreatePipeline(physicalDevice, rtDescriptorSetLayout, dynamicDispatchLoader, getRayTracingProperties(physicalDevice).maxRayRecursionDepth);
 
     // Create Shader Binding Table
@@ -500,7 +499,7 @@ uint32_t findMemoryTypeIndex(vk::PhysicalDevice& physicalDevice, const uint32_t&
     return uint32_t(0);
 }
 
-VulkanRaytraceStuff::VulkanBuffer createBuffer(vk::PhysicalDevice& physicalDevice, vk::Device& device, const vk::DeviceSize& size,
+VulkanBuffer createBuffer(vk::PhysicalDevice& physicalDevice, vk::Device& device, const vk::DeviceSize& size,
         const vk::Flags<vk::BufferUsageFlagBits>& usage,
         const vk::Flags<vk::MemoryPropertyFlagBits>& memoryProperty,
         const void* data = nullptr)
@@ -526,7 +525,7 @@ VulkanRaytraceStuff::VulkanBuffer createBuffer(vk::PhysicalDevice& physicalDevic
             device.unmapMemory(memory);
         }
 
-        return VulkanRaytraceStuff::VulkanBuffer{
+        return VulkanBuffer{
             .buffer = buffer,
             .memory=memory,
             .address = device.getBufferAddress({.buffer=buffer})
@@ -536,7 +535,7 @@ VulkanRaytraceStuff::VulkanBuffer createBuffer(vk::PhysicalDevice& physicalDevic
 
 /// @brief Step 4
 void BuildRTAS(vk::PhysicalDevice& physicalDevice, vk::Device& device, vk::DispatchLoaderDynamic& dynamicDispatchLoader, vk::CommandPool& commandPool, 
-vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure& topAccelerationStructure, VulkanRaytraceStuff::VulkanAccelerationStructure& bottomAccelerationStructure)
+vk::Queue& computePresentQueue, VulkanAccelerationStructure& topAccelerationStructure, VulkanAccelerationStructure& bottomAccelerationStructure)
 {
     Mesh mesh;    
     mesh.vertices = {
@@ -555,6 +554,10 @@ vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure
 
     mesh.Prepare(physicalDevice, device);
 
+    std::vector<vk::AccelerationStructureGeometryKHR> geometries;
+
+    geometries.push_back(mesh.geometryBLAS);
+
 
     // TODO: Maybe here is where more mesh instances go
     vk::AccelerationStructureBuildGeometryInfoKHR buildInfoBLAS = {
@@ -563,8 +566,8 @@ vk::Queue& computePresentQueue, VulkanRaytraceStuff::VulkanAccelerationStructure
         .mode=vk::BuildAccelerationStructureModeKHR::eBuild,
         .srcAccelerationStructure=nullptr,
         .dstAccelerationStructure=nullptr,
-        .geometryCount=1, // # of AccelerationStructureGeometryKHR
-        .pGeometries=&mesh.geometryBLAS,
+        .geometryCount=static_cast<uint32_t>(geometries.size()), // # of AccelerationStructureGeometryKHR
+        .pGeometries=geometries.data(),
         .scratchData={}
     };
 
@@ -784,7 +787,7 @@ vk::ImageView createImageView (vk::Device& device, const vk::Image& image, const
     );
 };
 
-VulkanRaytraceStuff::VulkanImage createImage(vk::Device& device, vk::PhysicalDevice& physicalDevice, const vk::Format& format,
+VulkanImage createImage(vk::Device& device, vk::PhysicalDevice& physicalDevice, const vk::Format& format,
         const vk::Flags<vk::ImageUsageFlagBits>& usageFlagBits, const uint32_t width, const uint32_t height)
 {
     vk::ImageCreateInfo imageCreateInfo = {
@@ -813,16 +816,16 @@ VulkanRaytraceStuff::VulkanImage createImage(vk::Device& device, vk::PhysicalDev
 
     vk::DeviceMemory memory = device.allocateMemory(allocateInfo);
     device.bindImageMemory(image, memory, 0);
-    return VulkanRaytraceStuff::VulkanImage{
+    return VulkanImage{
         .image = image,
         .memory=memory,
         .imageView=createImageView(device, image, format)
     };
 }
 
-void createDescriptor(vk::PhysicalDevice& physicalDevice, vk::Device& device, uint32_t width, uint32_t height, VulkanRaytraceStuff::VulkanImage& renderTargetImage, 
-                        VulkanRaytraceStuff::VulkanAccelerationStructure& topAccelerationStructure, vk::DescriptorSet& rtDescriptorSet,
-                        vk::DescriptorSetLayout& rtDescriptorSetLayout, VulkanRaytraceStuff::VulkanBuffer& uniformBuffer)
+void createDescriptor(vk::PhysicalDevice& physicalDevice, vk::Device& device, uint32_t width, uint32_t height, VulkanImage& renderTargetImage, 
+                        VulkanAccelerationStructure& topAccelerationStructure, vk::DescriptorSet& rtDescriptorSet,
+                        vk::DescriptorSetLayout& rtDescriptorSetLayout, VulkanBuffer& uniformBuffer)
 {
     struct UniformData
     {
@@ -927,7 +930,7 @@ void createShaderBindingTable(vk::Device& device, vk::PhysicalDevice& physicalDe
         const uint32_t shaderGroupCount = 3;
         vk::DeviceSize sbtBufferSize = baseAlignment * shaderGroupCount;
 
-        VulkanRaytraceStuff::VulkanBuffer shaderBindingTableBuffer = createBuffer(physicalDevice, device, sbtBufferSize,
+        VulkanBuffer shaderBindingTableBuffer = createBuffer(physicalDevice, device, sbtBufferSize,
         vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress,
         vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eDeviceLocal);
 
@@ -951,7 +954,7 @@ void createShaderBindingTable(vk::Device& device, vk::PhysicalDevice& physicalDe
         device.unmapMemory(shaderBindingTableBuffer.memory);
 }
 
-void prepareCommandBuffers(std::vector<vk::CommandBuffer>& commandBuffers, VulkanRaytraceStuff::VulkanImage& renderTargetImage, uint32_t queueId, vk::Pipeline& rtPipeline,
+void prepareCommandBuffers(std::vector<vk::CommandBuffer>& commandBuffers, VulkanImage& renderTargetImage, uint32_t queueId, vk::Pipeline& rtPipeline,
                             vk::DescriptorSet& rtDescriptorSet, vk::PipelineLayout& rtPipelineLayout,
                             vk::StridedDeviceAddressRegionKHR& sbtRayGenAddressRegion,
                             vk::StridedDeviceAddressRegionKHR& sbtMissAddressRegion,
@@ -1032,7 +1035,7 @@ void prepareCommandBuffers(std::vector<vk::CommandBuffer>& commandBuffers, Vulka
     }
 }
 
-void updateUniformBuffer(vk::Device& device, VulkanRaytraceStuff::VulkanBuffer& uniformBuffer, VulkanRaytraceStuff::UniformData& uniformData)
+void updateUniformBuffer(vk::Device& device, VulkanBuffer& uniformBuffer, UniformData& uniformData)
 {
     void* data = device.mapMemory(uniformBuffer.memory, 0, sizeof(uniformBuffer));
     memcpy(data, &uniformData, sizeof(uniformData));
@@ -1040,13 +1043,13 @@ void updateUniformBuffer(vk::Device& device, VulkanRaytraceStuff::VulkanBuffer& 
 };
 
 
-void destroyBuffer(vk::Device& device, const VulkanRaytraceStuff::VulkanBuffer& buffer)
+void destroyBuffer(vk::Device& device, const VulkanBuffer& buffer)
 {
     device.destroyBuffer(buffer.buffer);
     device.freeMemory(buffer.memory);
 };
 
-void destroyAccelerationStructure (vk::Device& device, const VulkanRaytraceStuff::VulkanAccelerationStructure& accelerationStructure, vk::DispatchLoaderDynamic& dynamicDispatchLoader)
+void destroyAccelerationStructure (vk::Device& device, const VulkanAccelerationStructure& accelerationStructure, vk::DispatchLoaderDynamic& dynamicDispatchLoader)
 {
     device.destroyAccelerationStructureKHR(accelerationStructure.accelerationStructure, nullptr, dynamicDispatchLoader);
     destroyBuffer(device, accelerationStructure.structureBuffer);
@@ -1054,7 +1057,7 @@ void destroyAccelerationStructure (vk::Device& device, const VulkanRaytraceStuff
     destroyBuffer(device, accelerationStructure.instancesBuffer);
 };
 
-void destroyImage(vk::Device& device, const VulkanRaytraceStuff::VulkanImage& image)
+void destroyImage(vk::Device& device, const VulkanImage& image)
 {
     device.destroyImageView(image.imageView);
     device.destroyImage(image.image);
@@ -1073,7 +1076,7 @@ void Mesh::Prepare(vk::PhysicalDevice& physicalDevice, vk::Device& device)
     const vk::MemoryPropertyFlags memoryFlags = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent | 
         vk::MemoryPropertyFlagBits::eDeviceLocal;
 
-    vertexBuffer = createBuffer(physicalDevice, device, vertices.size() * sizeof(VulkanRaytraceStuff::Vertex), usageFlags, memoryFlags, vertices.data());
+    vertexBuffer = createBuffer(physicalDevice, device, vertices.size() * sizeof(Vertex), usageFlags, memoryFlags, vertices.data());
     indexBuffer = createBuffer(physicalDevice, device, indices.size() * sizeof(uint32_t), usageFlags, memoryFlags, indices.data());
     transformBuffer = createBuffer(physicalDevice, device, sizeof(VkTransformMatrixKHR), usageFlags, memoryFlags, &transformMatrix);
 
@@ -1087,7 +1090,7 @@ void Mesh::Prepare(vk::PhysicalDevice& physicalDevice, vk::Device& device)
             vk::AccelerationStructureGeometryTrianglesDataKHR{
                 .vertexFormat=vk::Format::eR32G32B32A32Sfloat,
                 .vertexData=vertexBufferDeviceAddress,
-                .vertexStride=sizeof(VulkanRaytraceStuff::Vertex),
+                .vertexStride=sizeof(Vertex),
                 .maxVertex=0,
                 .indexType=vk::IndexType::eUint32,
                 .indexData=indexBufferDeviceAddress,

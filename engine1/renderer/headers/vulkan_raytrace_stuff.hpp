@@ -17,6 +17,38 @@
 #ifndef VULKAN_RAYTRACE_STUFF
 #define VULKAN_RAYTRACE_STUFF
 
+struct VulkanBuffer {
+    vk::Buffer buffer;
+    vk::DeviceMemory memory;
+    vk::DeviceAddress address;
+};
+
+struct Vertex {
+        float pos[3];
+};
+
+struct VulkanAccelerationStructure
+{
+    vk::AccelerationStructureKHR accelerationStructure;
+    VulkanBuffer structureBuffer;
+    VulkanBuffer scratchBuffer;
+    VulkanBuffer instancesBuffer;
+};
+
+struct UniformData
+{
+    glm::mat4 viewInverse;
+    glm::mat4 projInverse;
+};
+
+struct VulkanImage
+{
+    vk::Image image;
+    vk::DeviceMemory memory;
+    vk::ImageView imageView;
+};
+
+
 class Shader
 {
     public:
@@ -62,12 +94,6 @@ public:
     void init(const char* appname, int width, int height);
     void run();
     ~VulkanRaytraceStuff();
-
-    struct VulkanBuffer {
-        vk::Buffer buffer;
-        vk::DeviceMemory memory;
-        vk::DeviceAddress address;
-    };
     
     vk::Extent2D extent;
     SDL_Window* window;
@@ -90,50 +116,21 @@ public:
     vk::Fence fence;
     std::vector<vk::CommandBuffer> commandBuffers;
 
-
-    struct Vertex {
-        float pos[3];
-    };
-    
-    struct VulkanAccelerationStructure
-    {
-        vk::AccelerationStructureKHR accelerationStructure;
-        VulkanBuffer structureBuffer;
-        VulkanBuffer scratchBuffer;
-        VulkanBuffer instancesBuffer;
-    };
-
     VulkanAccelerationStructure topAccelerationStructure, bottomAccelerationStructure;
 
-    struct VulkanImage
-    {
-        vk::Image image;
-        vk::DeviceMemory memory;
-        vk::ImageView imageView;
-    };
-
     VulkanImage renderTargetImage;
-
-    struct UniformData
-    {
-        glm::mat4 viewInverse;
-        glm::mat4 projInverse;
-    };
-
-    
-
 };
 
 struct Mesh
 {
     public:
-    std::vector<VulkanRaytraceStuff::Vertex> vertices;
+    std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
     VkTransformMatrixKHR transformMatrix;
 
-    VulkanRaytraceStuff::VulkanBuffer vertexBuffer;
-    VulkanRaytraceStuff::VulkanBuffer indexBuffer;
-    VulkanRaytraceStuff::VulkanBuffer transformBuffer;
+    VulkanBuffer vertexBuffer;
+    VulkanBuffer indexBuffer;
+    VulkanBuffer transformBuffer;
 
     vk::DeviceOrHostAddressConstKHR vertexBufferDeviceAddress;
     vk::DeviceOrHostAddressConstKHR indexBufferDeviceAddress;
@@ -151,6 +148,17 @@ struct Mesh
     }
 
     void Prepare(vk::PhysicalDevice& physicalDevice, vk::Device& device);
+};
+
+class RayTracingAccelerationStructure
+{
+    public:
+    RayTracingAccelerationStructure();
+
+    void AddMesh(Mesh& mesh, glm::mat4 trs);
+    void Build();
+    void Clear();
+    void Destroy();
 };
 
 #endif
